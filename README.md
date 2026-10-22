@@ -2,7 +2,7 @@
 
 一个用 Zig 编写的模块化宏内核，第一目标平台是 QEMU/virt 上的 x86_64。
 
-当前状态：M1 进行中。M0 已完成；IDT、GDT/TSS/IST、x2APIC timer、物理帧分配器和页表映射，以及正常/panic/exception/nmi/timer/mem QEMU smoke 已落地。内核堆、按需分页和 IOAPIC 尚未开始。
+当前状态：M1 进行中。M0 已完成；IDT、GDT/TSS/IST、x2APIC timer、物理帧分配器、页表映射、内核堆和按需分页，以及正常/panic/exception/nmi/timer/mem QEMU smoke 已落地。IOAPIC/外部 IRQ 尚未开始。
 
 ## 文档
 
@@ -17,6 +17,7 @@
 - [ADR-0004](docs/adr/0004-m1-gdt-tss-ist.md) — GDT/TSS/IST 与 NMI smoke
 - [ADR-0005](docs/adr/0005-m1-apic-timer-irq.md) — x2APIC timer 与可返回 IRQ 入口
 - [ADR-0006](docs/adr/0006-m1-frame-allocator-and-paging.md) — 物理帧分配与 4/5-level 页表映射
+- [ADR-0007](docs/adr/0007-m1-kernel-heap-and-demand-paging.md) — 内核堆与按需分页
 
 ## 工具链
 
@@ -40,7 +41,7 @@ zig build qemu-smoke -Doptimize=Debug
 
 `zig build` 默认运行 `check-deps`、host tests，并构建 ReleaseSafe kernel。Debug 必须显式 `-Doptimize=Debug`。
 
-`zig build qemu-smoke` 需要 QEMU + OVMF；默认跑 ReleaseSafe，`-Doptimize=Debug` 跑 Debug 变体。脚本会下载 Limine，并使用 `-cpu max` 启动正常、panic、exception、nmi、timer、mem 六个变体（x2APIC timer 需要该 CPU 模型）。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
+`zig build qemu-smoke` 需要 QEMU + OVMF；默认跑 ReleaseSafe，`-Doptimize=Debug` 跑 Debug 变体。脚本会下载 Limine，并使用 `-cpu max` 启动正常、panic、exception、nmi、timer、mem 六个变体；mem 变体覆盖帧分配、页表映射、内核堆和按需分页（x2APIC timer 需要该 CPU 模型）。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
 
 `check-deps` 强制模块依赖 DAG、跨模块 `interface.zig` 边界、字面量 import、禁用 std 命名空间，以及只有 `kernel` 可以导入构建期 `config`。
 

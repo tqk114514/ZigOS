@@ -3,6 +3,7 @@
 
 const format = @import("../lib/interface.zig").format;
 const gdt = @import("gdt.zig");
+const paging = @import("paging.zig");
 const port = @import("port.zig");
 const serial = @import("serial.zig");
 const timer = @import("timer.zig");
@@ -33,6 +34,7 @@ const ExceptionFrame = extern struct {
 
 extern const isr_stub_table: [isr_count]u64;
 extern const irq_stub_table: [irq_count]u64;
+extern fn pf_stub() callconv(.c) void;
 
 var idt: [idt_entries]IdtEntry align(16) = undefined;
 var idtr: [10]u8 align(1) = undefined;
@@ -56,6 +58,8 @@ pub fn init() void {
     for (0..irq_count) |i| {
         idt[32 + i] = makeEntry(irq_stub_table[i], cs, 0);
     }
+    // Vector 14 uses the returnable page-fault stub instead of the fatal one.
+    idt[14] = makeEntry(@intCast(@intFromPtr(&pf_stub)), cs, 0);
 
     // lidt consumes a packed 10-byte descriptor (u16 limit, u64 base). Build it
     // as bytes so the inline asm memory operand cannot pick up struct padding.
@@ -82,6 +86,10 @@ pub fn init() void {
 
 export fn irqHandler() callconv(.c) void {
     timer.handleIrq();
+}
+
+export fn pageFaultHandler(frame: *const ExceptionFrame) callconv(.c) bool {
+    return paging.handlePageFault(frame.error_code);
 }
 
 export fn exceptionHandler(frame: *const ExceptionFrame) callconv(.c) noreturn {

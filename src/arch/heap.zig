@@ -1,0 +1,73 @@
+//! Kernel heap over a demand-mapped virtual range. First-fit free list,
+//! no coalescing, bump fallback. The pages are mapped on first touch by the
+//! page-fault handler.
+
+const heap_base: u64 = 0xffff_a000_0000_0000;
+const heap_size: u64 = 256 * 1024 * 1024;
+
+const Block = extern struct {
+    size: usize,
+    next: ?*Block,
+};
+
+pub const Heap = struct {
+    pos: u64,
+    end: u64,
+    free_list: ?*Block = null,
+
+    pub fn alloc(self: *Heap, len: usize) ?[]u8 {
+        const need = align16(len + @sizeOf(Block));
+        var prev: ?*Block = null;
+        var cur = self.free_list;
+        while (cur) |block| {
+            if (block.size >= need) {
+                if (prev) |p| {
+                    p.next = block.next;
+                } else {
+                    self.free_list = block.next;
+                }
+                return payload(block, len);
+            }
+            prev = block;
+            cur = block.next;
+        }
+
+        const start = self.pos;
+        if (start + need > self.end) return null;
+        self.pos = start + need;
+        const block: *Block = @ptrFromInt(start);
+        block.size = need;
+        block.next = null;
+        return payload(block, len);
+    }
+
+    pub fn free(self: *Heap, bytes: []u8) void {
+        const start: usize = @intFromPtr(bytes.ptr) - @sizeOf(Block);
+        const block: *Block = @ptrFromInt(start);
+        block.next = self.free_list;
+        self.free_list = block;
+    }
+};
+
+var kernel_heap: Heap = .{
+    .pos = heap_base,
+    .end = heap_base + heap_size,
+};
+
+pub fn kernel() *Heap {
+    return &kernel_heap;
+}
+
+pub fn contains(addr: u64) bool {
+    return addr >= heap_base and addr < heap_base + heap_size;
+}
+
+fn payload(block: *Block, len: usize) []u8 {
+    const start: usize = @intFromPtr(block) + @sizeOf(Block);
+    // SAFETY: the block came from the heap range and has room for len bytes.
+    return @as([*]u8, @ptrFromInt(start))[0..len];
+}
+
+fn align16(n: usize) usize {
+    return (n + 15) & ~@as(usize, 15);
+}

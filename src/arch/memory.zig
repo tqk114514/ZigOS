@@ -2,6 +2,7 @@
 
 const format = @import("../lib/interface.zig").format;
 const frame = @import("frame.zig");
+const heap = @import("heap.zig");
 const limine = @import("limine.zig");
 const paging = @import("paging.zig");
 const serial = @import("serial.zig");
@@ -44,6 +45,38 @@ pub fn run() bool {
 
     const back = paging.translate(test_virt) orelse return false;
     if ((back & frame_mask) != (f2 & frame_mask)) return false;
+
+    // Kernel heap over an initially unmapped range; the first writes fault
+    // and the page-fault handler maps the heap pages on demand.
+    const kh = heap.kernel();
+    const a = kh.alloc(32) orelse return false;
+    a[0] = 1;
+    a[31] = 2;
+    if (a[0] != 1 or a[31] != 2) return false;
+    const a_ptr = @intFromPtr(a.ptr);
+    kh.free(a);
+
+    const b = kh.alloc(32) orelse return false;
+    if (@intFromPtr(b.ptr) != a_ptr) return false;
+    b[0] = 5;
+    if (b[0] != 5) return false;
+
+    const big = kh.alloc(8192) orelse return false;
+    big[0] = 7;
+    big[8191] = 9;
+    if (big[0] != 7 or big[8191] != 9) return false;
+
+    // Keep the faulting heap writes ordered before the effect checks below.
+    asm volatile ("" ::: .{ .memory = true });
+    const faults = paging.demandFaults();
+    if (faults == 0) return false;
+    if (paging.translate(a_ptr) == null) return false;
+
+    console.write("MEM: heap faults ");
+    format.writeDec(console, faults);
+    console.write(" head ");
+    format.writeHex(console, a_ptr, 16);
+    console.write("\n");
 
     console.write("MEM: mapped ");
     format.writeHex(console, test_virt, 16);

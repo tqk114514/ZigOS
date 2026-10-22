@@ -127,6 +127,7 @@ fn addKernel(
     module.addImport("config", options.createModule());
     module.addAssemblyFile(b.path("src/arch/exceptions.S"));
     module.addAssemblyFile(b.path("src/arch/irqs.S"));
+    module.addAssemblyFile(b.path("src/arch/pf.S"));
     module.addAssemblyFile(b.path("src/arch/segments.S"));
 
     const exe = b.addExecutable(.{

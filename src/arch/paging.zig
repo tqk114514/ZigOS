@@ -1,6 +1,7 @@
 //! Page-table map/translate over Limine's CR3, with optional 5-level paging.
 
 const frame = @import("frame.zig");
+const heap = @import("heap.zig");
 
 pub const flags_present: u64 = 1 << 0;
 pub const flags_rw: u64 = 1 << 1;
@@ -18,6 +19,24 @@ pub fn init(hhdm_offset: u64) void {
 
 pub fn isFiveLevel() bool {
     return five_level;
+}
+
+var demand_faults: u64 = 0;
+
+pub fn demandFaults() u64 {
+    return demand_faults;
+}
+
+pub fn handlePageFault(error_code: u64) bool {
+    const fault_addr = readCr2();
+    const page = fault_addr & ~@as(u64, 0xfff);
+    // Present faults are protection faults and stay fatal in M1.
+    if ((error_code & 1) != 0) return false;
+    if (!heap.contains(page)) return false;
+    const phys = frame.allocFrame() orelse return false;
+    if (!mapPage(page, phys, flags_rw | flags_nx)) return false;
+    demand_faults += 1;
+    return true;
 }
 
 pub fn mapPage(virt: u64, phys: u64, flags: u64) bool {
@@ -86,6 +105,13 @@ fn currentCr3() u64 {
 fn currentCr4() u64 {
     // SAFETY: reading CR4 at CPL0.
     return asm volatile ("mov %%cr4, %[out]"
+        : [out] "=r" (-> u64),
+    );
+}
+
+fn readCr2() u64 {
+    // SAFETY: reading CR2 at CPL0.
+    return asm volatile ("mov %%cr2, %[out]"
         : [out] "=r" (-> u64),
     );
 }
