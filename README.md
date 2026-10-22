@@ -2,7 +2,7 @@
 
 一个用 Zig 编写的模块化宏内核，第一目标平台是 QEMU/virt 上的 x86_64。
 
-当前状态：M1 进行中。M0 已完成；IDT、GDT/TSS/IST 和正常/panic/exception/nmi QEMU smoke 已落地。APIC 时钟和内存管理尚未开始。
+当前状态：M1 进行中。M0 已完成；IDT、GDT/TSS/IST、x2APIC timer 和正常/panic/exception/nmi/timer QEMU smoke 已落地。IOAPIC、外部 IRQ 和内存管理尚未开始。
 
 ## 文档
 
@@ -15,6 +15,7 @@
 - [ADR-0002](docs/adr/0002-m0-boot-chain.md) — M0 启动链、镜像布局与 QEMU smoke
 - [ADR-0003](docs/adr/0003-m1-fatal-exception-entry.md) — M1 致命异常入口与 exception smoke
 - [ADR-0004](docs/adr/0004-m1-gdt-tss-ist.md) — GDT/TSS/IST 与 NMI smoke
+- [ADR-0005](docs/adr/0005-m1-apic-timer-irq.md) — x2APIC timer 与可返回 IRQ 入口
 
 ## 工具链
 
@@ -38,7 +39,7 @@ zig build qemu-smoke -Doptimize=Debug
 
 `zig build` 默认运行 `check-deps`、host tests，并构建 ReleaseSafe kernel。Debug 必须显式 `-Doptimize=Debug`。
 
-`zig build qemu-smoke` 需要 QEMU + OVMF；默认跑 ReleaseSafe，`-Doptimize=Debug` 跑 Debug 变体。脚本会下载 Limine，然后启动正常、panic、exception、nmi 四个变体。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
+`zig build qemu-smoke` 需要 QEMU + OVMF；默认跑 ReleaseSafe，`-Doptimize=Debug` 跑 Debug 变体。脚本会下载 Limine，并使用 `-cpu max` 启动正常、panic、exception、nmi、timer 五个变体（x2APIC timer 需要该 CPU 模型）。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
 
 `check-deps` 强制模块依赖 DAG、跨模块 `interface.zig` 边界、字面量 import、禁用 std 命名空间，以及只有 `kernel` 可以导入构建期 `config`。
 
@@ -48,7 +49,7 @@ zig build qemu-smoke -Doptimize=Debug
 build.zig / build.zig.zon   构建入口，Zig 0.17.0
 boot/limine.conf            Limine 启动配置
 src/                        内核源码
-tests/qemu-smoke.sh         OVMF + vvfat + Limine 的正常/panic/exception/nmi smoke
+tests/qemu-smoke.sh         OVMF + vvfat + Limine 的正常/panic/exception/nmi/timer smoke
 tools/check_deps.zig        依赖与 import 规则检查器
 docs/                       宪法、规范、架构、ADR
 deps/                       smoke 下载的 Limine（gitignored）

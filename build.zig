@@ -46,15 +46,17 @@ pub fn build(b: *std.Build) void {
         .os_tag = .freestanding,
     });
 
-    const kernel = addKernel(b, kernel_target, optimize, "kernel", false, false, false);
-    const panic_kernel = addKernel(b, kernel_target, optimize, "kernel-panic", true, false, false);
-    const exception_kernel = addKernel(b, kernel_target, optimize, "kernel-exception", false, true, false);
-    const nmi_kernel = addKernel(b, kernel_target, optimize, "kernel-nmi", false, false, true);
+    const kernel = addKernel(b, kernel_target, optimize, "kernel", false, false, false, false);
+    const panic_kernel = addKernel(b, kernel_target, optimize, "kernel-panic", true, false, false, false);
+    const exception_kernel = addKernel(b, kernel_target, optimize, "kernel-exception", false, true, false, false);
+    const nmi_kernel = addKernel(b, kernel_target, optimize, "kernel-nmi", false, false, true, false);
+    const timer_kernel = addKernel(b, kernel_target, optimize, "kernel-timer", false, false, false, true);
 
     const install_kernel = b.addInstallArtifact(kernel, .{ .dest_sub_path = "kernel.elf" });
     const install_panic_kernel = b.addInstallArtifact(panic_kernel, .{ .dest_sub_path = "kernel-panic.elf" });
     const install_exception_kernel = b.addInstallArtifact(exception_kernel, .{ .dest_sub_path = "kernel-exception.elf" });
     const install_nmi_kernel = b.addInstallArtifact(nmi_kernel, .{ .dest_sub_path = "kernel-nmi.elf" });
+    const install_timer_kernel = b.addInstallArtifact(timer_kernel, .{ .dest_sub_path = "kernel-timer.elf" });
 
     const kernel_step = b.step("kernel", "Build the freestanding kernel");
     kernel_step.dependOn(&install_kernel.step);
@@ -68,12 +70,16 @@ pub fn build(b: *std.Build) void {
     const nmi_kernel_step = b.step("kernel-nmi", "Build the kernel with the NMI/IST smoke path");
     nmi_kernel_step.dependOn(&install_nmi_kernel.step);
 
+    const timer_kernel_step = b.step("kernel-timer", "Build the kernel with the APIC timer smoke path");
+    timer_kernel_step.dependOn(&install_timer_kernel.step);
+
     const smoke_cmd = b.addSystemCommand(&.{ "bash", "tests/qemu-smoke.sh" });
     smoke_cmd.setCwd(b.path("."));
     smoke_cmd.step.dependOn(&install_kernel.step);
     smoke_cmd.step.dependOn(&install_panic_kernel.step);
     smoke_cmd.step.dependOn(&install_exception_kernel.step);
     smoke_cmd.step.dependOn(&install_nmi_kernel.step);
+    smoke_cmd.step.dependOn(&install_timer_kernel.step);
 
     const smoke_step = b.step("qemu-smoke", "Boot the M0 kernel and panic path in QEMU");
     smoke_step.dependOn(&smoke_cmd.step);
@@ -92,11 +98,13 @@ fn addKernel(
     panic_smoke: bool,
     exception_smoke: bool,
     nmi_smoke: bool,
+    timer_smoke: bool,
 ) *std.Build.Step.Compile {
     const options = b.addOptions();
     options.addOption(bool, "panic_smoke", panic_smoke);
     options.addOption(bool, "exception_smoke", exception_smoke);
     options.addOption(bool, "nmi_smoke", nmi_smoke);
+    options.addOption(bool, "timer_smoke", timer_smoke);
 
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -110,6 +118,7 @@ fn addKernel(
     });
     module.addImport("config", options.createModule());
     module.addAssemblyFile(b.path("src/arch/exceptions.S"));
+    module.addAssemblyFile(b.path("src/arch/irqs.S"));
     module.addAssemblyFile(b.path("src/arch/segments.S"));
 
     const exe = b.addExecutable(.{

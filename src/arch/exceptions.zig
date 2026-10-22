@@ -5,8 +5,10 @@ const format = @import("../lib/interface.zig").format;
 const gdt = @import("gdt.zig");
 const port = @import("port.zig");
 const serial = @import("serial.zig");
+const timer = @import("timer.zig");
 
 const isr_count: usize = 32;
+const irq_count: usize = 16;
 const idt_entries: usize = 256;
 
 const IdtEntry = extern struct {
@@ -30,6 +32,7 @@ const ExceptionFrame = extern struct {
 };
 
 extern const isr_stub_table: [isr_count]u64;
+extern const irq_stub_table: [irq_count]u64;
 
 var idt: [idt_entries]IdtEntry align(16) = undefined;
 var idtr: [10]u8 align(1) = undefined;
@@ -49,6 +52,9 @@ pub fn init() void {
     }
     for (0..isr_count) |i| {
         idt[i] = makeEntry(isr_stub_table[i], cs, istIndex(i));
+    }
+    for (0..irq_count) |i| {
+        idt[32 + i] = makeEntry(irq_stub_table[i], cs, 0);
     }
 
     // lidt consumes a packed 10-byte descriptor (u16 limit, u64 base). Build it
@@ -72,6 +78,10 @@ pub fn init() void {
         :
         : [ptr] "r" (idtr_ptr),
         : .{ .memory = true });
+}
+
+export fn irqHandler() callconv(.c) void {
+    timer.handleIrq();
 }
 
 export fn exceptionHandler(frame: *const ExceptionFrame) callconv(.c) noreturn {

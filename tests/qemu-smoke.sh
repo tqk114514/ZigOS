@@ -18,6 +18,7 @@ KERNEL="$ROOT/zig-out/bin/kernel.elf"
 PANIC_KERNEL="$ROOT/zig-out/bin/kernel-panic.elf"
 EXCEPTION_KERNEL="$ROOT/zig-out/bin/kernel-exception.elf"
 NMI_KERNEL="$ROOT/zig-out/bin/kernel-nmi.elf"
+TIMER_KERNEL="$ROOT/zig-out/bin/kernel-timer.elf"
 BOOT_CONF="$ROOT/boot/limine.conf"
 ESP="$ROOT/zig-out/esp"
 ACCEL="${QEMU_ACCEL:-tcg}"
@@ -36,6 +37,10 @@ if [[ ! -f "$EXCEPTION_KERNEL" ]]; then
 fi
 if [[ ! -f "$NMI_KERNEL" ]]; then
     echo "qemu-smoke: missing $NMI_KERNEL; run 'zig build kernel-nmi'" >&2
+    exit 2
+fi
+if [[ ! -f "$TIMER_KERNEL" ]]; then
+    echo "qemu-smoke: missing $TIMER_KERNEL; run 'zig build kernel-timer'" >&2
     exit 2
 fi
 
@@ -133,6 +138,7 @@ run_boot() {
     timeout 120 "$QEMU_BIN" \
         -M q35 \
         -m 512M \
+        -cpu "${QEMU_CPU:-max}" \
         -accel "$ACCEL" \
         "${FW_ARGS[@]}" \
         -drive "file=fat:rw:$(to_qemu_path "$ESP"),format=raw" \
@@ -161,6 +167,7 @@ run_boot "$KERNEL" 33 "ZigOS M1 OK" normal
 run_boot "$PANIC_KERNEL" 35 "PANIC: index out of bounds" panic
 run_boot "$EXCEPTION_KERNEL" 37 "EXCEPTION 3: breakpoint" exception
 run_boot "$NMI_KERNEL" 39 "EXCEPTION 2: non-maskable interrupt" nmi
+run_boot "$TIMER_KERNEL" 41 "TIMER OK" timer
 
 PANIC_LOG="$ROOT/zig-out/serial-panic.log"
 if ! grep -a -q "BACKTRACE:" "$PANIC_LOG" || ! grep -a -q "  #0 " "$PANIC_LOG"; then

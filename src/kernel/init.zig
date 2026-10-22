@@ -19,6 +19,13 @@ pub fn main() noreturn {
     arch.initGdt();
     arch.initIdt();
 
+    if (config.timer_smoke) {
+        arch.initTimer();
+        while (true) {
+            asm volatile ("hlt");
+        }
+    }
+
     if (config.nmi_smoke) {
         asm volatile ("int $2");
     }
