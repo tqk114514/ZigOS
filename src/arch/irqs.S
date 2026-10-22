@@ -32,6 +32,13 @@ irq_ext:
     pushq $48
     jmp irq_common
 
+# Reschedule IPI stub (see sched); the kernel registers the handler.
+.global irq_ipi
+irq_ipi:
+    pushq $0
+    pushq $50
+    jmp irq_common
+
 irq_common:
     pushq %rax
     pushq %rcx
@@ -48,6 +55,7 @@ irq_common:
     # The vector slot sits above the 10 saved registers.
     movq 80(%rbx), %rdi
     call irqHandler
+    call irqPreemptCheck
     movq %rbx, %rsp
     popq %rbx
     popq %r11

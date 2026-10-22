@@ -38,6 +38,12 @@ pub fn eoi() void {
     wrmsr(x2apic_eoi, 0);
 }
 
+/// Sends a fixed-delivery IPI to a physical x2APIC destination.
+pub fn sendIpi(apic_id: u32, vector: u8) void {
+    const x2apic_icr = 0x830;
+    wrmsr(x2apic_icr, (@as(u64, apic_id) << 32) | vector);
+}
+
 /// The local APIC ID of the current CPU.
 pub fn id() u32 {
     return @truncate(rdmsr(x2apic_id));

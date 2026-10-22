@@ -38,6 +38,31 @@ extern const isr_stub_table: [isr_count]u64;
 extern const irq_stub_table: [irq_count]u64;
 extern fn pf_stub() callconv(.c) void;
 extern fn irq_ext() callconv(.c) void;
+extern fn irq_ipi() callconv(.c) void;
+
+pub const timer_vector: u64 = 32;
+pub const ipi_vector: u64 = 50;
+
+pub const VectorHandler = *const fn () callconv(.c) void;
+
+// Boot-once registration: the kernel wires handlers before interrupts are
+// enabled; afterwards the table and hooks are read-only.
+var vector_handlers: [idt_entries]?VectorHandler = nullArray(idt_entries);
+var preempt_hook: ?VectorHandler = null;
+
+fn nullArray(comptime n: usize) [n]?VectorHandler {
+    var out: [n]?VectorHandler = undefined;
+    for (&out) |*slot| slot.* = null;
+    return out;
+}
+
+pub fn setVectorHandler(vector: u8, handler: ?VectorHandler) void {
+    vector_handlers[vector] = handler;
+}
+
+pub fn setPreemptHook(hook: ?VectorHandler) void {
+    preempt_hook = hook;
+}
 
 var idt: [idt_entries]IdtEntry align(16) = undefined;
 var idtr: [10]u8 align(1) = undefined;
@@ -65,6 +90,7 @@ pub fn init() void {
     idt[14] = makeEntry(@intCast(@intFromPtr(&pf_stub)), cs, 0);
     // The external IRQ stub sits outside the 16 IRQ-stub vectors.
     idt[extirq.vector] = makeEntry(@intCast(@intFromPtr(&irq_ext)), cs, 0);
+    idt[ipi_vector] = makeEntry(@intCast(@intFromPtr(&irq_ipi)), cs, 0);
 
     // lidt consumes a packed 10-byte descriptor (u16 limit, u64 base). Build it
     // as bytes so the inline asm memory operand cannot pick up struct padding.
@@ -95,11 +121,22 @@ pub fn load() void {
 }
 
 export fn irqHandler(vector: u64) callconv(.c) void {
+    if (vector < idt_entries) {
+        if (vector_handlers[@intCast(vector)]) |handler| {
+            handler();
+            return;
+        }
+    }
     switch (vector) {
-        32 => timer.handleIrq(),
+        timer_vector => timer.handleIrq(),
         extirq.vector => extirq.handleIrq(),
         else => {},
     }
+}
+
+/// Called by irq_common right before restoring the interrupted context.
+export fn irqPreemptCheck() callconv(.c) void {
+    if (preempt_hook) |hook| hook();
 }
 
 export fn pageFaultHandler(frame: *const ExceptionFrame) callconv(.c) bool {

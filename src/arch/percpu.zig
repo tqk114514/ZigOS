@@ -18,6 +18,15 @@ pub const Cpu = extern struct {
 // Boot-once state: entries are filled by their own CPU before `online`, and
 // read by other CPUs only after acquiring `online`.
 var cpus: [max_cpus]Cpu = undefined;
+var cpu_count: usize = 1;
+
+pub fn setCount(n: usize) void {
+    cpu_count = n;
+}
+
+pub fn count() usize {
+    return cpu_count;
+}
 
 /// Resets the online flags before any AP is released.
 pub fn init() void {

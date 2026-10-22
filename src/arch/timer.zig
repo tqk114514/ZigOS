@@ -23,13 +23,17 @@ pub fn init() void {
     }
 
     apic.enable();
-    // Periodic timer on vector 32.
-    apic.wrmsr(x2apic_lvt_timer, timer_vector | (1 << 17));
-    apic.wrmsr(x2apic_timer_divide, 0x3); // divide by 16
-    apic.wrmsr(x2apic_timer_initial, 0x100000);
+    programPeriodic();
 
     // SAFETY: IDT/GDT are ready and the timer is programmed; enable interrupts.
     asm volatile ("sti");
+}
+
+/// Programs the periodic timer for the current CPU. The caller sets IF.
+pub fn programPeriodic() void {
+    apic.wrmsr(x2apic_lvt_timer, timer_vector | (1 << 17));
+    apic.wrmsr(x2apic_timer_divide, 0x3); // divide by 16
+    apic.wrmsr(x2apic_timer_initial, 0x100000);
 }
 
 pub fn handleIrq() void {

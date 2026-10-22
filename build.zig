@@ -73,6 +73,7 @@ pub fn build(b: *std.Build) void {
     const irq_kernel = addKernel(b, kernel_target, optimize, "kernel-irq", .{ .irq_smoke = true });
     const bench_kernel = addKernel(b, kernel_target, optimize, "kernel-bench", .{ .bench_smoke = true });
     const smp_kernel = addKernel(b, kernel_target, optimize, "kernel-smp", .{ .smp_smoke = true });
+    const sched_kernel = addKernel(b, kernel_target, optimize, "kernel-sched", .{ .sched_smoke = true });
 
     const install_kernel = b.addInstallArtifact(kernel, .{ .dest_sub_path = "kernel.elf" });
     const install_panic_kernel = b.addInstallArtifact(panic_kernel, .{ .dest_sub_path = "kernel-panic.elf" });
@@ -83,6 +84,7 @@ pub fn build(b: *std.Build) void {
     const install_irq_kernel = b.addInstallArtifact(irq_kernel, .{ .dest_sub_path = "kernel-irq.elf" });
     const install_bench_kernel = b.addInstallArtifact(bench_kernel, .{ .dest_sub_path = "kernel-bench.elf" });
     const install_smp_kernel = b.addInstallArtifact(smp_kernel, .{ .dest_sub_path = "kernel-smp.elf" });
+    const install_sched_kernel = b.addInstallArtifact(sched_kernel, .{ .dest_sub_path = "kernel-sched.elf" });
 
     const kernel_step = b.step("kernel", "Build the freestanding kernel");
     kernel_step.dependOn(&install_kernel.step);
@@ -111,6 +113,9 @@ pub fn build(b: *std.Build) void {
     const smp_kernel_step = b.step("kernel-smp", "Build the kernel with the SMP smoke path");
     smp_kernel_step.dependOn(&install_smp_kernel.step);
 
+    const sched_kernel_step = b.step("kernel-sched", "Build the kernel with the scheduler smoke path");
+    sched_kernel_step.dependOn(&install_sched_kernel.step);
+
     const smoke_cmd = b.addSystemCommand(&.{ "bash", "tests/qemu-smoke.sh" });
     smoke_cmd.setCwd(b.path("."));
     smoke_cmd.step.dependOn(&install_kernel.step);
@@ -121,6 +126,7 @@ pub fn build(b: *std.Build) void {
     smoke_cmd.step.dependOn(&install_mem_kernel.step);
     smoke_cmd.step.dependOn(&install_irq_kernel.step);
     smoke_cmd.step.dependOn(&install_smp_kernel.step);
+    smoke_cmd.step.dependOn(&install_sched_kernel.step);
 
     const smoke_step = b.step("qemu-smoke", "Boot the kernel smoke variants in QEMU");
     smoke_step.dependOn(&smoke_cmd.step);
@@ -149,6 +155,7 @@ const SmokeOptions = struct {
     irq_smoke: bool = false,
     bench_smoke: bool = false,
     smp_smoke: bool = false,
+    sched_smoke: bool = false,
 };
 
 fn addKernel(
@@ -167,6 +174,7 @@ fn addKernel(
     options.addOption(bool, "irq_smoke", smoke.irq_smoke);
     options.addOption(bool, "bench_smoke", smoke.bench_smoke);
     options.addOption(bool, "smp_smoke", smoke.smp_smoke);
+    options.addOption(bool, "sched_smoke", smoke.sched_smoke);
 
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -179,6 +187,7 @@ fn addKernel(
         .omit_frame_pointer = false,
     });
     module.addImport("config", options.createModule());
+    module.addAssemblyFile(b.path("src/arch/context.S"));
     module.addAssemblyFile(b.path("src/arch/exceptions.S"));
     module.addAssemblyFile(b.path("src/arch/irqs.S"));
     module.addAssemblyFile(b.path("src/arch/pf.S"));

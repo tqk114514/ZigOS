@@ -23,6 +23,13 @@ const stress_batch: usize = 4;
 var stress_done: u32 = 0; // atomic
 var stress_errors: u32 = 0; // atomic
 
+// Registered by the composition root before APs are released.
+var ap_handler: ?*const fn () callconv(.c) noreturn = null;
+
+pub fn setApHandler(handler: ?*const fn () callconv(.c) noreturn) void {
+    ap_handler = handler;
+}
+
 /// Sets up the per-CPU block for the boot processor and resets the AP flags.
 pub fn initBsp() bool {
     percpu.init();
@@ -35,6 +42,7 @@ pub fn initBsp() bool {
     const cpus = mp.cpus orelse return false;
 
     const count: usize = @intCast(@min(mp.cpu_count, @as(u64, percpu.max_cpus)));
+    percpu.setCount(count);
     var index: usize = 0;
     while (index < count) : (index += 1) {
         if (cpus[index].lapic_id == mp.bsp_lapic_id) {
@@ -44,6 +52,28 @@ pub fn initBsp() bool {
         }
     }
     return false;
+}
+
+/// Wakes every AP; each runs the registered AP handler (or parks if none).
+pub fn startAps() bool {
+    return releaseAps(0) != 0;
+}
+
+/// Publishes the job word and the entry point for every non-BSP CPU.
+fn releaseAps(magic: u64) usize {
+    const mp = limine.mp() orelse return 0;
+    const cpus = mp.cpus orelse return 0;
+    if (mp.cpu_count > percpu.max_cpus) return 0;
+    const count: usize = @intCast(mp.cpu_count);
+    const entry: *const fn (*limine.MpInfo) callconv(.c) void = @ptrCast(&apEntry);
+    var index: usize = 0;
+    while (index < count) : (index += 1) {
+        if (cpus[index].lapic_id == mp.bsp_lapic_id) continue;
+        // Publish the job before the release store that wakes the AP.
+        cpus[index].extra_argument = magic;
+        @atomicStore(@TypeOf(cpus[index].goto_address), &cpus[index].goto_address, entry, .release);
+    }
+    return count;
 }
 
 /// Releases every AP, runs the concurrent allocator stress on all CPUs, and
@@ -64,17 +94,9 @@ pub fn run() bool {
     stress_errors = 0;
     const frames_before = frame.freeCount();
 
-    const entry: *const fn (*limine.MpInfo) callconv(.c) void = @ptrCast(&apEntry);
-    var index: usize = 0;
-    while (index < count) : (index += 1) {
-        if (cpus[index].lapic_id == mp.bsp_lapic_id) continue;
-        // Publish the job before the release store that wakes the AP.
-        cpus[index].extra_argument = stress_magic;
-        @atomicStore(@TypeOf(cpus[index].goto_address), &cpus[index].goto_address, entry, .release);
-    }
+    if (releaseAps(stress_magic) == 0) return false;
 
     stressWorker();
-
     const deadline = cpu.rdtsc() + ap_timeout_ticks;
     while (@atomicLoad(u32, &stress_done, .acquire) != count) {
         if (cpu.rdtsc() > deadline) {
@@ -104,7 +126,7 @@ pub fn run() bool {
 
     // Each block proves its own CPU filled it: self/index/apic_id only become
     // visible through the release store that also published `online`.
-    index = 0;
+    var index: usize = 0;
     while (index < count) : (index += 1) {
         const block = percpu.at(index);
         if (!percpu.isOnline(block) or
@@ -193,6 +215,7 @@ export fn apMain(info: *limine.MpInfo) callconv(.c) noreturn {
     if (percpu.current() != block) park();
     percpu.markOnline(block);
     if (info.extra_argument == stress_magic) stressWorker();
+    if (ap_handler) |handler| handler();
     park();
 }
 

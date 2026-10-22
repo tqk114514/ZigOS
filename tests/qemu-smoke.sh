@@ -15,6 +15,7 @@ TIMER_KERNEL="$ROOT/zig-out/bin/kernel-timer.elf"
 MEM_KERNEL="$ROOT/zig-out/bin/kernel-mem.elf"
 IRQ_KERNEL="$ROOT/zig-out/bin/kernel-irq.elf"
 SMP_KERNEL="$ROOT/zig-out/bin/kernel-smp.elf"
+SCHED_KERNEL="$ROOT/zig-out/bin/kernel-sched.elf"
 ACCEL="${QEMU_ACCEL:-tcg}"
 
 check_kernel() {
@@ -32,6 +33,7 @@ check_kernel "$TIMER_KERNEL" kernel-timer
 check_kernel "$MEM_KERNEL" kernel-mem
 check_kernel "$IRQ_KERNEL" kernel-irq
 check_kernel "$SMP_KERNEL" kernel-smp
+check_kernel "$SCHED_KERNEL" kernel-sched
 
 # shellcheck source=tests/qemu-env.sh
 source "$ROOT/tests/qemu-env.sh"
@@ -91,6 +93,7 @@ for smp in 1 4; do
     run_boot "$MEM_KERNEL" 45 "MEM OK" mem "$smp"
     run_boot "$IRQ_KERNEL" 49 "IRQ OK" irq "$smp"
     run_boot "$SMP_KERNEL" 57 "SMP OK" smp "$smp"
+    run_boot "$SCHED_KERNEL" 61 "SCHED OK" sched "$smp"
 done
 
 PANIC_LOG="$ROOT/zig-out/serial-panic.log"
@@ -146,3 +149,12 @@ if ! grep -a -q "SMP: cpu 3 apic" "$SMP_LOG" ||
     exit 1
 fi
 echo "qemu-smoke: SMP CPUs OK"
+
+SCHED_LOG="$ROOT/zig-out/serial-sched-smp4.log"
+if ! grep -a -q "SCHED: cpu 3 switches" "$SCHED_LOG" ||
+   ! grep -a -q "SCHED: thread " "$SCHED_LOG"; then
+    echo "qemu-smoke: sched serial output missing the preemption evidence" >&2
+    tail -n 120 "$SCHED_LOG" 2>/dev/null || true
+    exit 1
+fi
+echo "qemu-smoke: scheduler preemption OK"

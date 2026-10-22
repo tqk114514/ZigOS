@@ -1,5 +1,6 @@
 const arch = @import("../arch/interface.zig");
 const format = @import("../lib/interface.zig").format;
+const sched = @import("../sched/interface.zig");
 const config = @import("config");
 
 pub fn main() noreturn {
@@ -60,6 +61,21 @@ pub fn main() noreturn {
         } else {
             console.write("SMP FAIL\n");
             arch.qemuExit(0x1d); // 59
+        }
+        arch.halt();
+    }
+
+    if (config.sched_smoke) {
+        arch.setVectorHandler(arch.timer_vector, sched.onTimer);
+        arch.setVectorHandler(arch.ipi_vector, sched.onIpi);
+        arch.setPreemptHook(sched.preempt);
+        arch.setApHandler(sched.apEntry);
+        if (arch.startAps() and sched.runSmoke()) {
+            console.write("SCHED OK\n");
+            arch.qemuExit(0x1e); // 61
+        } else {
+            console.write("SCHED FAIL\n");
+            arch.qemuExit(0x1f); // 63
         }
         arch.halt();
     }
