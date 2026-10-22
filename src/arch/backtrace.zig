@@ -10,18 +10,21 @@ const Frame = extern struct {
 
 const max_frames: usize = 16;
 const max_frame_delta: usize = 1 << 20;
-const min_kernel_address: usize = 0xffff_8000_0000_0000;
+
+extern var __stack_bottom: u8;
+extern var __stack_top: u8;
 
 pub noinline fn print(console: hal.Console) void {
     console.write("BACKTRACE:\n");
+    const stack_low = @intFromPtr(&__stack_bottom);
+    const stack_high = @intFromPtr(&__stack_top);
 
     var rbp = @frameAddress();
     var depth: usize = 0;
-    while (depth < max_frames and rbp >= min_kernel_address) : (depth += 1) {
-        // SAFETY: rbp is taken from the frame-pointer chain and must point
-        // into the higher-half stack. The monotonicity and delta checks stop
-        // corrupted chains before the next dereference. M0 uses Limine's stack;
-        // M1 will add explicit stack bounds.
+    while (depth < max_frames and rbp >= stack_low and rbp < stack_high) : (depth += 1) {
+        // SAFETY: rbp is constrained to the fixed 64KiB kernel stack; the
+        // monotonicity and delta checks stop corrupted chains before the next
+        // dereference. M1 adds guard pages and IST stacks.
         const frame: *align(1) const Frame = @ptrFromInt(rbp);
         const ret = frame.return_address;
         if (ret == 0) break;
@@ -33,7 +36,7 @@ pub noinline fn print(console: hal.Console) void {
         console.write("\n");
 
         const next = frame.previous_rbp;
-        if (next <= rbp or next - rbp > max_frame_delta) break;
+        if (next <= rbp or next - rbp > max_frame_delta or next >= stack_high) break;
         rbp = next;
     }
 }

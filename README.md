@@ -25,17 +25,18 @@
 
 ```sh
 zig fmt --check .
-zig build test
+zig build test -Doptimize=Debug
 zig build test -Doptimize=ReleaseSafe
 zig build check-deps
 zig build kernel
+zig build kernel -Doptimize=Debug
 zig build qemu-smoke
-zig build qemu-smoke -Doptimize=ReleaseSafe
+zig build qemu-smoke -Doptimize=Debug
 ```
 
-`zig build` 默认运行 `check-deps`、host tests，并构建 Debug kernel。
+`zig build` 默认运行 `check-deps`、host tests，并构建 ReleaseSafe kernel。Debug 必须显式 `-Doptimize=Debug`。
 
-`zig build qemu-smoke` 需要 QEMU + OVMF；脚本会下载 Limine，然后启动正常和 panic 两个变体。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
+`zig build qemu-smoke` 需要 QEMU + OVMF；默认跑 ReleaseSafe，`-Doptimize=Debug` 跑 Debug 变体。脚本会下载 Limine，然后启动正常和 panic 两个变体。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
 
 `check-deps` 强制模块依赖 DAG、跨模块 `interface.zig` 边界、字面量 import、禁用 std 命名空间，以及只有 `kernel` 可以导入构建期 `config`。
 

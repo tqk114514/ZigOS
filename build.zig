@@ -2,7 +2,11 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    const optimize = b.option(
+        std.builtin.Optimize,
+        "optimize",
+        "Prioritize performance, safety, or binary size",
+    ) orelse .safe;
 
     const check_mod = b.createModule(.{
         .root_source_file = b.path("tools/check_deps.zig"),
@@ -71,7 +75,7 @@ pub fn build(b: *std.Build) void {
 fn addKernel(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.builtin.Optimize,
     name: []const u8,
     panic_smoke: bool,
 ) *std.Build.Step.Compile {
@@ -87,7 +91,6 @@ fn addKernel(
         .red_zone = false,
         .stack_check = false,
         .omit_frame_pointer = false,
-        .single_threaded = true,
     });
     module.addImport("config", options.createModule());
 
@@ -100,6 +103,7 @@ fn addKernel(
     exe.use_llvm = true;
     exe.use_lld = true;
     exe.setLinkerScript(b.path("src/arch/linker.ld"));
-    exe.entry = .{ .symbol_name = "kmain" };
+    // _start is the naked trampoline that enables SSE and selects the kernel stack.
+    exe.entry = .{ .symbol_name = "_start" };
     return exe;
 }

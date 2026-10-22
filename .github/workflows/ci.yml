@@ -31,7 +31,7 @@ jobs:
       - name: Format
         run: zig fmt --check .
       - name: Host tests (Debug)
-        run: zig build test
+        run: zig build test -Doptimize=Debug
       - name: Host tests (ReleaseSafe)
         run: zig build test -Doptimize=ReleaseSafe
       - name: Dependency DAG
@@ -45,7 +45,7 @@ jobs:
     name: qemu-smoke
     runs-on: ubuntu-26.04
     needs: check
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: tqk114514/setup-zig@v2.2.1-node24
@@ -54,6 +54,6 @@ jobs:
       - name: Install QEMU and OVMF
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
       - name: QEMU smoke (Debug)
-        run: zig build qemu-smoke
+        run: zig build qemu-smoke -Doptimize=Debug
       - name: QEMU smoke (ReleaseSafe)
         run: zig build qemu-smoke -Doptimize=ReleaseSafe

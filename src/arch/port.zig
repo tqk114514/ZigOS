@@ -6,7 +6,7 @@ pub fn outb(port: u16, value: u8) void {
         :
         : [value] "{al}" (value),
           [port] "{dx}" (port),
-    );
+        : .{ .memory = true });
 }
 
 pub fn inb(port: u16) u8 {
@@ -14,5 +14,5 @@ pub fn inb(port: u16) u8 {
     return asm volatile ("inb %[port], %[result]"
         : [result] "={al}" (-> u8),
         : [port] "{dx}" (port),
-    );
+        : .{ .memory = true });
 }

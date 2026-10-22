@@ -38,14 +38,14 @@ v1 = M0 启动 → M1 内存/中断 → M2 SMP/调度/syscall/用户态 → M3 V
 
 ```sh
 zig fmt --check .
-zig build test
+zig build test -Doptimize=Debug
 zig build test -Doptimize=ReleaseSafe
 zig build check-deps
 zig build kernel
 zig build qemu-smoke
 ```
 
-`zig build qemu-smoke` 需要本机 QEMU + OVMF；脚本会按固定版本/哈希下载 Limine。M0 同时验证 Debug 和 ReleaseSafe：`zig build qemu-smoke -Doptimize=ReleaseSafe`。M3 起增加 fuzz smoke。
+默认构建是 ReleaseSafe；Debug 必须显式 `-Doptimize=Debug`。`zig build qemu-smoke` 需要本机 QEMU + OVMF；脚本会按固定版本/哈希下载 Limine。M0 验证 Debug 和 ReleaseSafe 两套 QEMU smoke：`zig build qemu-smoke -Doptimize=Debug` 和 `zig build qemu-smoke`。M3 起增加 fuzz smoke。
 
 测试要求见 [ENGINEERING 第 3 节](docs/ENGINEERING.md#3-测试)：纯逻辑必须有 host 单测；硬件路径必须有 QEMU 集成测试或可复现的手动验证；bug 修复先有失败测试。覆盖率是 host 代码的地板（80%），不要写无断言的“调用一下”测试。
 

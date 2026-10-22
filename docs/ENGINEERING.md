@@ -111,9 +111,9 @@
 
 ### 3.4 CI 门禁
 
-- 每次提交：`zig fmt --check .`、`zig build test`、`zig build test -Doptimize=ReleaseSafe`、`zig build check-deps`。
+- 每次提交：`zig fmt --check .`、`zig build test -Doptimize=Debug`、`zig build test -Doptimize=ReleaseSafe`、`zig build check-deps`。
 - 平台矩阵：Linux + Windows（host 检查）。
-- M0 起：QEMU smoke（Linux runner）。
+- M0 起：`zig build qemu-smoke -Doptimize=Debug` 和 `zig build qemu-smoke -Doptimize=ReleaseSafe`（Linux runner）。
 - M3 起：fuzz smoke。
 - 性能基准在 M0 建立 baseline，之后每次 PR 跑相对回归；阈值默认 5%。
 

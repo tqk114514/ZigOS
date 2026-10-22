@@ -3,8 +3,6 @@ const format = @import("../lib/interface.zig").format;
 const config = @import("config");
 
 pub fn main() noreturn {
-    arch.disableInterrupts();
-    arch.enableSse();
     arch.initSerial();
     const console = arch.serial_console;
 

@@ -11,35 +11,6 @@ pub fn disableInterrupts() void {
     asm volatile ("cli");
 }
 
-pub fn enableSse() void {
-    // Limine enters with OSFXSR/OSXMMEXCPT clear; the compiler may emit SSE
-    // for ordinary 16-byte moves. Enable it before any such instruction runs.
-    var cr0: u64 = undefined;
-    // SAFETY: privileged control-register access at CPL0.
-    asm volatile ("mov %%cr0, %[out]"
-        : [out] "=r" (cr0),
-    );
-    cr0 &= ~@as(u64, (1 << 2) | (1 << 3)); // clear EM, TS
-    cr0 |= @as(u64, 1 << 1); // set MP
-    // SAFETY: privileged control-register access at CPL0.
-    asm volatile ("mov %[in], %%cr0"
-        :
-        : [in] "r" (cr0),
-        : .{ .memory = true });
-
-    var cr4: u64 = undefined;
-    // SAFETY: privileged control-register access at CPL0.
-    asm volatile ("mov %%cr4, %[out]"
-        : [out] "=r" (cr4),
-    );
-    cr4 |= @as(u64, (1 << 9) | (1 << 10)); // OSFXSR, OSXMMEXCPT
-    // SAFETY: privileged control-register access at CPL0.
-    asm volatile ("mov %[in], %%cr4"
-        :
-        : [in] "r" (cr4),
-        : .{ .memory = true });
-}
-
 pub fn initSerial() void {
     serial.init();
 }
