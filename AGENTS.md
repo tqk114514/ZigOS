@@ -4,7 +4,7 @@
 
 ## 项目
 
-面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。当前 M1（进行中）：M0 已完成；IDT、GDT/TSS/IST、x2APIC timer、物理帧分配器、页表映射、内核堆和按需分页、IOAPIC/外部 IRQ 与 MMIO 映射，以及正常/panic/exception/nmi/timer/mem/irq QEMU smoke 已落地。剩余 M1 收尾与内存压力测试。
+面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。当前 M1 已完成：M0 已完成；IDT、GDT/TSS/IST、x2APIC timer、物理帧分配器、页表映射、内核堆和按需分页、IOAPIC/外部 IRQ 与 MMIO 映射、内存压力测试，以及正常/panic/exception/nmi/timer/mem/irq QEMU smoke 已落地。M1 收尾遗留：性能基准设施（ADR-0009）；M2（SMP/调度/syscall/用户态）未开始。
 
 v1 = M0 启动 → M1 内存/中断 → M2 SMP/调度/syscall/用户态 → M3 VFS/virtio-blk/shell。网络、可写文件系统、真实硬件、多架构在 v1 之后。v1 明确不做 POSIX/GUI/USB/热加载模块/微内核 IPC；范围变更必须走 ADR。
 
