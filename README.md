@@ -2,7 +2,7 @@
 
 一个用 Zig 编写的模块化宏内核，第一目标平台是 QEMU/virt 上的 x86_64。
 
-当前状态：M2 进行中。M1 已完成（含内存压力测试与性能基准设施）；SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁已落地，调度器/IPI、对象/句柄、syscall、用户态未开始。
+当前状态：M2 进行中。M1 已完成（含内存压力测试与性能基准设施）；SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI 已落地；睡眠/唤醒、对象/句柄、syscall、用户态未开始。
 
 ## 文档
 
@@ -22,6 +22,7 @@
 - [ADR-0009](docs/adr/0009-m1-benchmark-harness.md) — 性能基准设施（icount 与 5% 回归基线）
 - [ADR-0010](docs/adr/0010-m2-smp-percpu.md) — SMP 启动与 per-CPU 基础设施
 - [ADR-0011](docs/adr/0011-m2-spinlocks-allocator.md) — 自旋锁与分配器加锁
+- [ADR-0012](docs/adr/0012-m2-scheduler-core.md) — 抢占式调度器核心与 IPI
 
 ## 工具链
 
@@ -46,7 +47,7 @@ zig build bench
 
 `zig build` 默认运行 `check-deps`、host tests，并构建 ReleaseSafe kernel。Debug 必须显式 `-Doptimize=Debug`。
 
-`zig build qemu-smoke` 需要 QEMU + OVMF；默认跑 ReleaseSafe，`-Doptimize=Debug` 跑 Debug 变体。脚本会下载 Limine，并使用 `-cpu max` 启动正常、panic、exception、nmi、timer、mem、irq、smp 八个变体，每个变体各跑 `smp=1` 与 `smp=4`；mem 变体覆盖帧分配、页表映射、内核堆、按需分页和帧/堆耗尽压力测试（x2APIC timer 需要该 CPU 模型）。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
+`zig build qemu-smoke` 需要 QEMU + OVMF；默认跑 ReleaseSafe，`-Doptimize=Debug` 跑 Debug 变体。脚本会下载 Limine，并使用 `-cpu max` 启动正常、panic、exception、nmi、timer、mem、irq、smp、sched 九个变体，每个变体各跑 `smp=1` 与 `smp=4`；mem 变体覆盖帧分配、页表映射、内核堆、按需分页和帧/堆耗尽压力测试（x2APIC timer 需要该 CPU 模型）。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
 
 `zig build bench` 在 QEMU `-icount shift=7,sleep=off` 下运行确定性基准（帧分配、堆分配、按需分页），与 [tests/bench-baseline.txt](tests/bench-baseline.txt) 比较，慢 5% 以上即失败。基线属 ReleaseSafe 与当时的 QEMU 版本；刷新用 `BENCH_UPDATE=1 bash tests/qemu-bench.sh` 并单独提交。
 
