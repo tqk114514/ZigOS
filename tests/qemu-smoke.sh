@@ -7,12 +7,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-LIMINE_VERSION="${LIMINE_VERSION:-v12.9.4}"
-LIMINE_SHA256="${LIMINE_SHA256:-847334bc4bc142de996fbd132806b89ed73ac9ab34dbc1e90cfebf1fcc68c2b1}"
-LIMINE_URL="https://github.com/limine-bootloader/limine/releases/download/${LIMINE_VERSION}/limine-binary.tar.gz"
-
-DEPS="$ROOT/deps/limine"
-LIMINE_DIR="$DEPS/limine-binary"
 KERNEL="$ROOT/zig-out/bin/kernel.elf"
 PANIC_KERNEL="$ROOT/zig-out/bin/kernel-panic.elf"
 EXCEPTION_KERNEL="$ROOT/zig-out/bin/kernel-exception.elf"
@@ -20,117 +14,27 @@ NMI_KERNEL="$ROOT/zig-out/bin/kernel-nmi.elf"
 TIMER_KERNEL="$ROOT/zig-out/bin/kernel-timer.elf"
 MEM_KERNEL="$ROOT/zig-out/bin/kernel-mem.elf"
 IRQ_KERNEL="$ROOT/zig-out/bin/kernel-irq.elf"
-BOOT_CONF="$ROOT/boot/limine.conf"
-ESP="$ROOT/zig-out/esp"
 ACCEL="${QEMU_ACCEL:-tcg}"
 
-if [[ ! -f "$KERNEL" ]]; then
-    echo "qemu-smoke: missing $KERNEL; run 'zig build kernel'" >&2
-    exit 2
-fi
-if [[ ! -f "$PANIC_KERNEL" ]]; then
-    echo "qemu-smoke: missing $PANIC_KERNEL; run 'zig build kernel-panic'" >&2
-    exit 2
-fi
-if [[ ! -f "$EXCEPTION_KERNEL" ]]; then
-    echo "qemu-smoke: missing $EXCEPTION_KERNEL; run 'zig build kernel-exception'" >&2
-    exit 2
-fi
-if [[ ! -f "$NMI_KERNEL" ]]; then
-    echo "qemu-smoke: missing $NMI_KERNEL; run 'zig build kernel-nmi'" >&2
-    exit 2
-fi
-if [[ ! -f "$TIMER_KERNEL" ]]; then
-    echo "qemu-smoke: missing $TIMER_KERNEL; run 'zig build kernel-timer'" >&2
-    exit 2
-fi
-if [[ ! -f "$MEM_KERNEL" ]]; then
-    echo "qemu-smoke: missing $MEM_KERNEL; run 'zig build kernel-mem'" >&2
-    exit 2
-fi
-if [[ ! -f "$IRQ_KERNEL" ]]; then
-    echo "qemu-smoke: missing $IRQ_KERNEL; run 'zig build kernel-irq'" >&2
-    exit 2
-fi
-
-if [[ ! -f "$LIMINE_DIR/BOOTX64.EFI" ]]; then
-    mkdir -p "$DEPS"
-    TARBALL="$DEPS/limine-binary.tar.gz"
-    echo "qemu-smoke: downloading Limine $LIMINE_VERSION"
-    curl -fL --retry 3 -o "$TARBALL" "$LIMINE_URL"
-    actual="$(sha256sum "$TARBALL" | awk '{print $1}')"
-    if [[ "$actual" != "$LIMINE_SHA256" ]]; then
-        echo "qemu-smoke: Limine checksum mismatch: $actual" >&2
+check_kernel() {
+    if [[ ! -f "$1" ]]; then
+        echo "qemu-smoke: missing $1; run 'zig build $2'" >&2
         exit 2
     fi
-    rm -rf "$LIMINE_DIR"
-    # GNU tar on MSYS treats the "D:" in an absolute Windows path as a remote
-    # host; extract by relative name from the download directory instead.
-    (cd "$DEPS" && tar -xzf "limine-binary.tar.gz")
-fi
-
-if [[ -n "${QEMU:-}" ]]; then
-    QEMU_BIN="$QEMU"
-elif command -v qemu-system-x86_64 >/dev/null 2>&1; then
-    QEMU_BIN="$(command -v qemu-system-x86_64)"
-elif [[ -x "/c/Program Files/qemu/qemu-system-x86_64.exe" ]]; then
-    QEMU_BIN="/c/Program Files/qemu/qemu-system-x86_64.exe"
-else
-    echo "qemu-smoke: qemu-system-x86_64 not found; set QEMU=/path/to/qemu-system-x86_64" >&2
-    exit 2
-fi
-
-case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*)
-        to_qemu_path() { cygpath -m "$1"; }
-        DEFAULT_OVMF_CODE="C:/Program Files/qemu/share/edk2-x86_64-code.fd"
-        DEFAULT_OVMF_VARS="C:/Program Files/qemu/share/edk2-i386-vars.fd"
-        ;;
-    *)
-        to_qemu_path() { printf '%s\n' "$1"; }
-        DEFAULT_OVMF_CODE="/usr/share/OVMF/OVMF_CODE_4M.fd"
-        DEFAULT_OVMF_VARS="/usr/share/OVMF/OVMF_VARS_4M.fd"
-        if [[ ! -f "$DEFAULT_OVMF_CODE" ]]; then
-            DEFAULT_OVMF_CODE="/usr/share/OVMF/OVMF_CODE.fd"
-            DEFAULT_OVMF_VARS="/usr/share/OVMF/OVMF_VARS.fd"
-        fi
-        if [[ ! -f "$DEFAULT_OVMF_CODE" ]]; then
-            DEFAULT_OVMF_CODE="/usr/share/ovmf/OVMF.fd"
-            DEFAULT_OVMF_VARS=""
-        fi
-        ;;
-esac
-
-OVMF_CODE="${OVMF_CODE:-$DEFAULT_OVMF_CODE}"
-OVMF_VARS="${OVMF_VARS:-$DEFAULT_OVMF_VARS}"
-
-if [[ ! -f "$OVMF_CODE" ]]; then
-    echo "qemu-smoke: OVMF code not found at $OVMF_CODE" >&2
-    exit 2
-fi
-
-FW_ARGS=()
-if [[ -n "$OVMF_VARS" ]]; then
-    if [[ ! -f "$OVMF_VARS" ]]; then
-        echo "qemu-smoke: OVMF vars not found at $OVMF_VARS" >&2
-        exit 2
-    fi
-    VARS_COPY="$ROOT/zig-out/ovmf-vars.fd"
-    cp "$OVMF_VARS" "$VARS_COPY"
-    FW_ARGS=(
-        -drive "if=pflash,format=raw,readonly=on,file=$(to_qemu_path "$OVMF_CODE")"
-        -drive "if=pflash,format=raw,file=$(to_qemu_path "$VARS_COPY")"
-    )
-else
-    FW_ARGS=(-bios "$(to_qemu_path "$OVMF_CODE")")
-fi
-
-stage_esp() {
-    rm -rf "$ESP"
-    mkdir -p "$ESP/EFI/BOOT"
-    cp "$LIMINE_DIR/BOOTX64.EFI" "$ESP/EFI/BOOT/BOOTX64.EFI"
-    cp "$BOOT_CONF" "$ESP/EFI/BOOT/limine.conf"
 }
+
+check_kernel "$KERNEL" kernel
+check_kernel "$PANIC_KERNEL" kernel-panic
+check_kernel "$EXCEPTION_KERNEL" kernel-exception
+check_kernel "$NMI_KERNEL" kernel-nmi
+check_kernel "$TIMER_KERNEL" kernel-timer
+check_kernel "$MEM_KERNEL" kernel-mem
+check_kernel "$IRQ_KERNEL" kernel-irq
+
+# shellcheck source=tests/qemu-env.sh
+source "$ROOT/tests/qemu-env.sh"
+
+stage_esp
 
 run_boot() {
     local kernel="$1"
@@ -171,7 +75,6 @@ run_boot() {
     echo "qemu-smoke: $label OK (exit $code)"
 }
 
-stage_esp
 run_boot "$KERNEL" 33 "ZigOS M1 OK" normal
 run_boot "$PANIC_KERNEL" 35 "PANIC: index out of bounds" panic
 run_boot "$EXCEPTION_KERNEL" 37 "EXCEPTION 3: breakpoint" exception
