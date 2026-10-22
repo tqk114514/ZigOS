@@ -7,6 +7,7 @@ const x2apic_eoi = 0x80b;
 const x2apic_svr = 0x80f;
 const spurious_vector: u32 = 0x2f;
 
+/// True when CPUID reports x2APIC support (leaf 1, ECX bit 21).
 pub fn hasX2Apic() bool {
     var eax: u32 = undefined;
     var ebx: u32 = undefined;
@@ -24,6 +25,7 @@ pub fn hasX2Apic() bool {
     return (ecx & (1 << 21)) != 0;
 }
 
+/// Enables x2APIC mode and software-enables the APIC; call once, early.
 pub fn enable() void {
     // Enable x2APIC mode (bit 10) and the APIC global enable (bit 11).
     wrmsr(apic_base_msr, rdmsr(apic_base_msr) | (1 << 10) | (1 << 11));
@@ -31,14 +33,17 @@ pub fn enable() void {
     wrmsr(x2apic_svr, 0x100 | spurious_vector);
 }
 
+/// Signals end-of-interrupt for the vector currently in service.
 pub fn eoi() void {
     wrmsr(x2apic_eoi, 0);
 }
 
+/// The local APIC ID of the current CPU.
 pub fn id() u32 {
     return @truncate(rdmsr(x2apic_id));
 }
 
+/// Reads a model-specific register (privileged).
 pub fn rdmsr(msr: u32) u64 {
     var low: u32 = undefined;
     var high: u32 = undefined;
@@ -51,6 +56,7 @@ pub fn rdmsr(msr: u32) u64 {
     return (@as(u64, high) << 32) | low;
 }
 
+/// Writes a model-specific register (privileged).
 pub fn wrmsr(msr: u32, value: u64) void {
     const low: u32 = @truncate(value);
     const high: u32 = @truncate(value >> 32);

@@ -43,11 +43,15 @@ pub const Ioapic = struct {
     }
 
     fn read(self: Ioapic, reg: u32) u32 {
+        // SAFETY: register I/O through the uncached MMIO mapping; the IOAPIC
+        // is only programmed before interrupts are enabled (M1, single CPU).
         self.regs.select = reg;
         return self.regs.window;
     }
 
     fn write(self: Ioapic, reg: u32, value: u32) void {
+        // SAFETY: register I/O through the uncached MMIO mapping; the IOAPIC
+        // is only programmed before interrupts are enabled (M1, single CPU).
         self.regs.select = reg;
         self.regs.window = value;
     }
@@ -56,6 +60,8 @@ pub const Ioapic = struct {
 /// Wraps an IOAPIC MMIO mapping (see `paging.mapMmioPage`).
 pub fn attach(mmio: u64, gsi_base: u32) Ioapic {
     var ioapic = Ioapic{
+        // SAFETY: the caller passes a `paging.mapMmioPage` result; the mapping
+        // lives for the kernel's lifetime and is uncached (PCD).
         .regs = @ptrFromInt(mmio),
         .gsi_base = gsi_base,
         .max_redir = 0,

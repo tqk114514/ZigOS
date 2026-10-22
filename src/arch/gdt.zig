@@ -1,8 +1,6 @@
 //! Kernel GDT, TSS, and IST stacks. Initialized once at boot; hardware reads
 //! them afterwards.
 
-pub const kernel_cs: u16 = 0x08;
-pub const kernel_ds: u16 = 0x10;
 pub const tss_selector: u16 = 0x18;
 
 pub const ist_double_fault: u8 = 1;

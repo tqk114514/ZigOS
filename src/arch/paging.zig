@@ -70,6 +70,8 @@ pub fn mapMmioPage(phys: u64) ?u64 {
     return mmio_window + phys;
 }
 
+/// Translates a virtual address mapped by `mapPage`. Huge-page (PS) entries
+/// are not interpreted; walking a large-page region yields garbage.
 pub fn translate(virt: u64) ?u64 {
     var table = tablePtr(currentCr3() & phys_mask);
     if (five_level) {
