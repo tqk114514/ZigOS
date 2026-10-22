@@ -23,9 +23,9 @@ jobs:
           - windows-latest
     steps:
       - uses: actions/checkout@v7
-      # setup-zig v2.2.1 is the latest release and still declares node20;
-      # the runner forces it onto node24 until upstream ships a node24 build.
-      - uses: mlugg/setup-zig@v2
+      # Fork of mlugg/setup-zig v2.2.1 with only the runtime changed to node24.
+      # Revert to upstream once it ships a node24 release.
+      - uses: tqk114514/setup-zig@v2.2.1-node24
         with:
           version: 0.17.0
       - name: Format
