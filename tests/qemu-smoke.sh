@@ -214,3 +214,12 @@ if ! grep -a -q "EXT: ioapic base" "$IRQ_LOG" ||
     exit 1
 fi
 echo "qemu-smoke: IOAPIC route OK"
+
+MEM_LOG="$ROOT/zig-out/serial-mem.log"
+if ! grep -a -q "MEM: heap pressure" "$MEM_LOG" ||
+   ! grep -a -q "MEM: frames exhausted" "$MEM_LOG"; then
+    echo "qemu-smoke: mem serial output missing the exhaustion evidence" >&2
+    tail -n 120 "$MEM_LOG" 2>/dev/null || true
+    exit 1
+fi
+echo "qemu-smoke: memory pressure OK"
