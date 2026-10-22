@@ -12,6 +12,7 @@ const paging = @import("paging.zig");
 const port = @import("port.zig");
 const serial = @import("serial.zig");
 
+/// IDT vector the external IRQ is routed to.
 pub const vector: u8 = 48;
 
 const rtc_isa_irq: u8 = 8;
@@ -68,9 +69,15 @@ pub fn run() bool {
     if (!apic.hasX2Apic()) return false;
     apic.enable();
 
+    const apic_id = apic.id();
+    if (apic_id > 0xff) {
+        console.write("EXT: x2APIC id too large\n");
+        return false;
+    }
+
     const gsi = acpi.gsiFor(rtc_isa_irq);
     io.maskAll();
-    if (!io.program(gsi, vector, acpi.isoFlags(rtc_isa_irq), @truncate(apic.id()))) {
+    if (!io.program(gsi, vector, acpi.isoFlags(rtc_isa_irq), @intCast(apic_id))) {
         console.write("EXT: gsi out of range\n");
         return false;
     }
@@ -90,6 +97,7 @@ pub fn run() bool {
     }
 }
 
+/// Runs from the irq_ext stub: acks the RTC source, then the APIC.
 pub fn handleIrq() void {
     // Reading register C clears the RTC's pending flags before the EOI.
     _ = readRtc(rtc_reg_c);
