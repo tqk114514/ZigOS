@@ -4,7 +4,7 @@
 
 ## 项目
 
-面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。当前 M1 已完成：M0 已完成；IDT、GDT/TSS/IST、x2APIC timer、物理帧分配器、页表映射、内核堆和按需分页、IOAPIC/外部 IRQ 与 MMIO 映射、内存压力测试，以及正常/panic/exception/nmi/timer/mem/irq QEMU smoke 已落地。M1 收尾遗留：性能基准设施（ADR-0009）；M2（SMP/调度/syscall/用户态）未开始。
+面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。当前 M1 已完成：M0 已完成；IDT、GDT/TSS/IST、x2APIC timer、物理帧分配器、页表映射、内核堆和按需分页、IOAPIC/外部 IRQ 与 MMIO 映射、内存压力测试、性能基准设施，以及正常/panic/exception/nmi/timer/mem/irq QEMU smoke 已落地。M2（SMP/调度/syscall/用户态）未开始。
 
 v1 = M0 启动 → M1 内存/中断 → M2 SMP/调度/syscall/用户态 → M3 VFS/virtio-blk/shell。网络、可写文件系统、真实硬件、多架构在 v1 之后。v1 明确不做 POSIX/GUI/USB/热加载模块/微内核 IPC；范围变更必须走 ADR。
 
@@ -43,9 +43,10 @@ zig build test -Doptimize=ReleaseSafe
 zig build check-deps
 zig build kernel
 zig build qemu-smoke
+zig build bench
 ```
 
-默认构建是 ReleaseSafe；Debug 必须显式 `-Doptimize=Debug`。`zig build qemu-smoke` 需要本机 QEMU + OVMF；脚本会按固定版本/哈希下载 Limine，并用 `-cpu max` 启动正常、panic、exception、nmi、timer、mem、irq 七个变体。验证 Debug 和 ReleaseSafe 两套：`zig build qemu-smoke -Doptimize=Debug` 和 `zig build qemu-smoke`。M3 起增加 fuzz smoke。
+默认构建是 ReleaseSafe；Debug 必须显式 `-Doptimize=Debug`。`zig build qemu-smoke` 需要本机 QEMU + OVMF；脚本会按固定版本/哈希下载 Limine，并用 `-cpu max` 启动正常、panic、exception、nmi、timer、mem、irq 七个变体。验证 Debug 和 ReleaseSafe 两套：`zig build qemu-smoke -Doptimize=Debug` 和 `zig build qemu-smoke`。`zig build bench` 在 QEMU `-icount` 下跑确定性基准并与入仓基线比较（5% 回归阈值，基线属 ReleaseSafe；刷新用 `BENCH_UPDATE=1`）。M3 起增加 fuzz smoke。
 
 测试要求见 [ENGINEERING 第 3 节](docs/ENGINEERING.md#3-测试)：纯逻辑必须有 host 单测；硬件路径必须有 QEMU 集成测试或可复现的手动验证；bug 修复先有失败测试。覆盖率是 host 代码的地板（80%），不要写无断言的“调用一下”测试。
 
@@ -67,9 +68,11 @@ zig build qemu-smoke
 - [docs/CHARTER.md](docs/CHARTER.md) — 宪法：定位、v1 范围、非目标、红线、修订程序。
 - [docs/ENGINEERING.md](docs/ENGINEERING.md) — Zig/OS 规则、测试、提交格式、评审清单。
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 模块职责、依赖 DAG、接口边界、启动路径。
-- [docs/adr/](docs/adr/) — 架构决策记录；[ADR-0001](docs/adr/0001-kernel-shape-and-v1-scope.md) 定形态，[ADR-0002](docs/adr/0002-m0-boot-chain.md) 定 M0 启动链，[ADR-0003](docs/adr/0003-m1-fatal-exception-entry.md) 定 M1 致命异常入口，[ADR-0004](docs/adr/0004-m1-gdt-tss-ist.md) 定 GDT/TSS/IST，[ADR-0005](docs/adr/0005-m1-apic-timer-irq.md) 定 x2APIC timer/IRQ，[ADR-0006](docs/adr/0006-m1-frame-allocator-and-paging.md) 定帧分配/页表映射，[ADR-0007](docs/adr/0007-m1-kernel-heap-and-demand-paging.md) 定内核堆/按需分页，[ADR-0008](docs/adr/0008-m1-ioapic-external-irq.md) 定 IOAPIC/外部 IRQ。
+- [docs/adr/](docs/adr/) — 架构决策记录；[ADR-0001](docs/adr/0001-kernel-shape-and-v1-scope.md) 定形态，[ADR-0002](docs/adr/0002-m0-boot-chain.md) 定 M0 启动链，[ADR-0003](docs/adr/0003-m1-fatal-exception-entry.md) 定 M1 致命异常入口，[ADR-0004](docs/adr/0004-m1-gdt-tss-ist.md) 定 GDT/TSS/IST，[ADR-0005](docs/adr/0005-m1-apic-timer-irq.md) 定 x2APIC timer/IRQ，[ADR-0006](docs/adr/0006-m1-frame-allocator-and-paging.md) 定帧分配/页表映射，[ADR-0007](docs/adr/0007-m1-kernel-heap-and-demand-paging.md) 定内核堆/按需分页，[ADR-0008](docs/adr/0008-m1-ioapic-external-irq.md) 定 IOAPIC/外部 IRQ，[ADR-0009](docs/adr/0009-m1-benchmark-harness.md) 定基准设施。
 - [boot/limine.conf](boot/limine.conf) — Limine 启动配置（M0）。
+- [tests/qemu-env.sh](tests/qemu-env.sh) — QEMU/OVMF/Limine 的公共测试环境。
 - [tests/qemu-smoke.sh](tests/qemu-smoke.sh) — OVMF + vvfat + Limine 的七变体 smoke。
+- [tests/qemu-bench.sh](tests/qemu-bench.sh) / [tests/bench-baseline.txt](tests/bench-baseline.txt) — icount 基准与 5% 回归基线。
 - [tools/check_deps.zig](tools/check_deps.zig) — 依赖与 import 规则的执行者。
 - [.gitmessage](.gitmessage) — 提交消息模板；用 `git config commit.template .gitmessage` 启用。
 - [build.zig](build.zig) / [build.zig.zon](build.zig.zon) — 构建入口，Zig 0.17.0。
