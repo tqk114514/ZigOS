@@ -4,6 +4,7 @@ const serial = @import("serial.zig");
 const limine = @import("limine.zig");
 const backtrace = @import("backtrace.zig");
 const exceptions = @import("exceptions.zig");
+const gdt = @import("gdt.zig");
 
 pub const serial_console = serial.console;
 
@@ -14,6 +15,10 @@ pub fn disableInterrupts() void {
 
 pub fn initSerial() void {
     serial.init();
+}
+
+pub fn initGdt() void {
+    gdt.init();
 }
 
 pub fn initIdt() void {

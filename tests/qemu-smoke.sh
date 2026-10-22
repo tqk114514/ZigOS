@@ -17,6 +17,7 @@ LIMINE_DIR="$DEPS/limine-binary"
 KERNEL="$ROOT/zig-out/bin/kernel.elf"
 PANIC_KERNEL="$ROOT/zig-out/bin/kernel-panic.elf"
 EXCEPTION_KERNEL="$ROOT/zig-out/bin/kernel-exception.elf"
+NMI_KERNEL="$ROOT/zig-out/bin/kernel-nmi.elf"
 BOOT_CONF="$ROOT/boot/limine.conf"
 ESP="$ROOT/zig-out/esp"
 ACCEL="${QEMU_ACCEL:-tcg}"
@@ -31,6 +32,10 @@ if [[ ! -f "$PANIC_KERNEL" ]]; then
 fi
 if [[ ! -f "$EXCEPTION_KERNEL" ]]; then
     echo "qemu-smoke: missing $EXCEPTION_KERNEL; run 'zig build kernel-exception'" >&2
+    exit 2
+fi
+if [[ ! -f "$NMI_KERNEL" ]]; then
+    echo "qemu-smoke: missing $NMI_KERNEL; run 'zig build kernel-nmi'" >&2
     exit 2
 fi
 
@@ -152,9 +157,10 @@ run_boot() {
 }
 
 stage_esp
-run_boot "$KERNEL" 33 "ZigOS M0 OK" normal
+run_boot "$KERNEL" 33 "ZigOS M1 OK" normal
 run_boot "$PANIC_KERNEL" 35 "PANIC: index out of bounds" panic
 run_boot "$EXCEPTION_KERNEL" 37 "EXCEPTION 3: breakpoint" exception
+run_boot "$NMI_KERNEL" 39 "EXCEPTION 2: non-maskable interrupt" nmi
 
 PANIC_LOG="$ROOT/zig-out/serial-panic.log"
 if ! grep -a -q "BACKTRACE:" "$PANIC_LOG" || ! grep -a -q "  #0 " "$PANIC_LOG"; then
@@ -165,9 +171,19 @@ fi
 echo "qemu-smoke: backtrace OK"
 
 EXCEPTION_LOG="$ROOT/zig-out/serial-exception.log"
-if ! grep -a -q "rip:" "$EXCEPTION_LOG"; then
-    echo "qemu-smoke: exception serial output missing CPU frame" >&2
+if ! grep -a -q "rip:" "$EXCEPTION_LOG" || ! grep -a -q "cs: 0008" "$EXCEPTION_LOG"; then
+    echo "qemu-smoke: exception serial output missing CPU frame or new GDT CS" >&2
     tail -n 120 "$EXCEPTION_LOG" 2>/dev/null || true
     exit 1
 fi
 echo "qemu-smoke: exception frame OK"
+
+NMI_LOG="$ROOT/zig-out/serial-nmi.log"
+if ! grep -a -q "rip:" "$NMI_LOG" ||
+   ! grep -a -q "cs: 0008" "$NMI_LOG" ||
+   ! grep -a -q "ist: ok" "$NMI_LOG"; then
+    echo "qemu-smoke: NMI serial output missing CPU frame, new GDT CS, or IST stack" >&2
+    tail -n 120 "$NMI_LOG" 2>/dev/null || true
+    exit 1
+fi
+echo "qemu-smoke: NMI IST OK"

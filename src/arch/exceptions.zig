@@ -2,6 +2,7 @@
 //! only read by software; hardware reads it via lidt.
 
 const format = @import("../lib/interface.zig").format;
+const gdt = @import("gdt.zig");
 const port = @import("port.zig");
 const serial = @import("serial.zig");
 
@@ -47,7 +48,7 @@ pub fn init() void {
         };
     }
     for (0..isr_count) |i| {
-        idt[i] = makeEntry(isr_stub_table[i], cs);
+        idt[i] = makeEntry(isr_stub_table[i], cs, istIndex(i));
     }
 
     // lidt consumes a packed 10-byte descriptor (u16 limit, u64 base). Build it
@@ -75,6 +76,10 @@ pub fn init() void {
 
 export fn exceptionHandler(frame: *const ExceptionFrame) callconv(.c) noreturn {
     const console = serial.console;
+    // SAFETY: reading the current stack pointer in the exception handler.
+    const current_rsp = asm volatile ("mov %%rsp, %[out]"
+        : [out] "=r" (-> usize),
+    );
 
     console.write("\nEXCEPTION ");
     format.writeDec(console, frame.vector);
@@ -94,23 +99,39 @@ export fn exceptionHandler(frame: *const ExceptionFrame) callconv(.c) noreturn {
     format.writeHex(console, frame.ss, 4);
     console.write("\n");
 
-    // QEMU isa-debug-exit: (0x12 << 1) | 1 == 37.
-    port.outb(0xf4, 0x12);
+    if (frame.vector == 2) {
+        console.write("  ist: ");
+        console.write(if (gdt.isInIstStack(gdt.ist_nmi, current_rsp)) "ok" else "bad");
+        console.write("\n");
+    }
+
+    // QEMU isa-debug-exit: 0x12 -> 37, 0x13 -> 39.
+    const exit_code: u8 = if (frame.vector == 2) 0x13 else 0x12;
+    port.outb(0xf4, exit_code);
     while (true) {
         // SAFETY: fatal exception path; interrupts stay disabled.
         asm volatile ("cli\n\thlt");
     }
 }
 
-fn makeEntry(addr: u64, cs: u16) IdtEntry {
+fn makeEntry(addr: u64, cs: u16, ist: u8) IdtEntry {
     return .{
         .offset_low = @truncate(addr),
         .selector = cs,
-        .ist = 0,
+        .ist = ist,
         .type_attr = 0x8e,
         .offset_mid = @truncate(addr >> 16),
         .offset_high = @truncate(addr >> 32),
         .reserved = 0,
+    };
+}
+
+fn istIndex(vector: usize) u8 {
+    return switch (vector) {
+        2 => gdt.ist_nmi,
+        8 => gdt.ist_double_fault,
+        18 => gdt.ist_machine_check,
+        else => 0,
     };
 }
 

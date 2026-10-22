@@ -6,7 +6,7 @@ pub fn main() noreturn {
     arch.initSerial();
     const console = arch.serial_console;
 
-    console.write("ZigOS M0\n");
+    console.write("ZigOS M1\n");
     console.write("limine base revision: ");
     format.writeHex(console, arch.limineLoadedBaseRevision(), 0);
     console.write("\n");
@@ -16,7 +16,12 @@ pub fn main() noreturn {
         arch.halt();
     }
 
+    arch.initGdt();
     arch.initIdt();
+
+    if (config.nmi_smoke) {
+        asm volatile ("int $2");
+    }
 
     if (config.exception_smoke) {
         asm volatile ("int3");
@@ -28,7 +33,7 @@ pub fn main() noreturn {
         probeWrite(&probe, index);
     }
 
-    console.write("ZigOS M0 OK\n");
+    console.write("ZigOS M1 OK\n");
     arch.qemuExit(0x10);
     arch.halt();
 }
