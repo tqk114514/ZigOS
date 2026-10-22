@@ -1,6 +1,6 @@
 # 架构
 
-状态：v1 草案。依赖图是强制的；模块内部设计随里程碑和 ADR 演进。M0 的启动链、镜像布局和 QEMU smoke 见 [ADR-0002](adr/0002-m0-boot-chain.md)；M1 的 IDT/致命异常入口见 [ADR-0003](adr/0003-m1-fatal-exception-entry.md)，GDT/TSS/IST 见 [ADR-0004](adr/0004-m1-gdt-tss-ist.md)。
+状态：v1 草案。依赖图是强制的；模块内部设计随里程碑和 ADR 演进。M0 的启动链、镜像布局和 QEMU smoke 见 [ADR-0002](adr/0002-m0-boot-chain.md)；M1 的 IDT/致命异常入口见 [ADR-0003](adr/0003-m1-fatal-exception-entry.md)，GDT/TSS/IST 见 [ADR-0004](adr/0004-m1-gdt-tss-ist.md)，x2APIC timer/IRQ 见 [ADR-0005](adr/0005-m1-apic-timer-irq.md)，帧分配/页表映射见 [ADR-0006](adr/0006-m1-frame-allocator-and-paging.md)，内核堆/按需分页见 [ADR-0007](adr/0007-m1-kernel-heap-and-demand-paging.md)。
 
 ## 1. 形态
 
