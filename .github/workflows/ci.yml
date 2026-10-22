@@ -19,10 +19,12 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
+          - ubuntu-26.04
           - windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      # setup-zig v2.2.1 is the latest release and still declares node20;
+      # the runner forces it onto node24 until upstream ships a node24 build.
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
