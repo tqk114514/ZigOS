@@ -17,3 +17,33 @@ pub fn pause() void {
     // SAFETY: pause is unprivileged and side-effect free.
     asm volatile ("pause");
 }
+
+pub fn interruptsEnabled() bool {
+    var flags: u64 = undefined;
+    // SAFETY: pushfq is unprivileged and only reads the flags register.
+    asm volatile ("pushfq\n\tpopq %[out]"
+        : [out] "=r" (flags),
+    );
+    return (flags & (1 << 9)) != 0;
+}
+
+pub fn disableInterrupts() void {
+    // SAFETY: privileged instruction executed by the kernel.
+    asm volatile ("cli" ::: .{ .memory = true });
+}
+
+pub fn enableInterrupts() void {
+    // SAFETY: privileged instruction executed by the kernel.
+    asm volatile ("sti" ::: .{ .memory = true });
+}
+
+/// Disables interrupts and reports whether they had been enabled.
+pub fn saveAndDisableInterrupts() bool {
+    const enabled = interruptsEnabled();
+    disableInterrupts();
+    return enabled;
+}
+
+pub fn restoreInterrupts(enabled: bool) void {
+    if (enabled) enableInterrupts();
+}

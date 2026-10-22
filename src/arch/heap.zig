@@ -1,6 +1,9 @@
 //! Kernel heap over a demand-mapped virtual range. First-fit free list,
 //! no coalescing, bump fallback. The pages are mapped on first touch by the
-//! page-fault handler.
+//! page-fault handler. One lock protects the whole heap; a page fault while
+//! holding it only takes the frame lock (order: heap -> frame).
+
+const spinlock = @import("spinlock.zig");
 
 const heap_base: u64 = 0xffff_a000_0000_0000;
 const heap_size: u64 = 256 * 1024 * 1024;
@@ -11,11 +14,15 @@ const Block = extern struct {
 };
 
 pub const Heap = struct {
+    lock: spinlock.Lock align(64) = .{},
     pos: u64,
     end: u64,
     free_list: ?*Block = null,
 
     pub fn alloc(self: *Heap, len: usize) ?[]u8 {
+        const irq = self.lock.acquire();
+        defer self.lock.release(irq);
+
         const need = align16(len + @sizeOf(Block));
         var prev: ?*Block = null;
         var cur = self.free_list;
@@ -42,6 +49,9 @@ pub const Heap = struct {
     }
 
     pub fn free(self: *Heap, bytes: []u8) void {
+        const irq = self.lock.acquire();
+        defer self.lock.release(irq);
+
         const start: usize = @intFromPtr(bytes.ptr) - @sizeOf(Block);
         const block: *Block = @ptrFromInt(start);
         block.next = self.free_list;

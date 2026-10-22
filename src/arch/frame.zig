@@ -1,18 +1,24 @@
 //! Physical frame allocator: a bitmap over usable Limine memmap ranges.
-//! Initialized once at boot; the state is the system-wide physical allocator.
+//! Initialized once at boot; the bitmap and its lock are the system-wide
+//! physical allocator. Counts take the lock, so callers must not hold it.
 
 const limine = @import("limine.zig");
+const spinlock = @import("spinlock.zig");
 
 const frame_size: u64 = 4096;
 const max_frames: usize = 1 << 20; // 4 GiB of 4 KiB frames
 const bitmap_bytes: usize = max_frames / 8;
 
+var lock: spinlock.Lock align(64) = .{};
 var bitmap: [bitmap_bytes]u8 = undefined;
 var total_frames: u64 = 0;
 var free_frames: u64 = 0;
 var hint: usize = 0;
 
 pub fn init(memmap: *const limine.MemmapResponse) void {
+    const irq = lock.acquire();
+    defer lock.release(irq);
+
     @memset(bitmap[0..], 0xff);
     total_frames = 0;
     free_frames = 0;
@@ -30,6 +36,9 @@ pub fn init(memmap: *const limine.MemmapResponse) void {
 }
 
 pub fn allocFrame() ?u64 {
+    const irq = lock.acquire();
+    defer lock.release(irq);
+
     if (free_frames == 0) return null;
     var i = hint;
     while (i < max_frames) : (i += 1) {
@@ -43,6 +52,9 @@ pub fn allocFrame() ?u64 {
 }
 
 pub fn freeFrame(phys: u64) void {
+    const irq = lock.acquire();
+    defer lock.release(irq);
+
     const index: usize = @intCast(phys / frame_size);
     if (index >= max_frames) return;
     const mask = @as(u8, 1) << @intCast(index % 8);
@@ -53,10 +65,14 @@ pub fn freeFrame(phys: u64) void {
 }
 
 pub fn freeCount() u64 {
+    const irq = lock.acquire();
+    defer lock.release(irq);
     return free_frames;
 }
 
 pub fn totalCount() u64 {
+    const irq = lock.acquire();
+    defer lock.release(irq);
     return total_frames;
 }
 

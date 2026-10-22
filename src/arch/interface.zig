@@ -1,6 +1,7 @@
 const hal = @import("../hal/interface.zig");
 const port = @import("port.zig");
 const serial = @import("serial.zig");
+const cpu = @import("cpu.zig");
 const limine = @import("limine.zig");
 const backtrace = @import("backtrace.zig");
 const bench = @import("bench.zig");
@@ -14,8 +15,7 @@ const timer = @import("timer.zig");
 pub const serial_console = serial.console;
 
 pub fn disableInterrupts() void {
-    // SAFETY: privileged instruction executed by the kernel.
-    asm volatile ("cli");
+    cpu.disableInterrupts();
 }
 
 pub fn initSerial() void {

@@ -6,12 +6,22 @@
 const format = @import("../lib/interface.zig").format;
 const cpu = @import("cpu.zig");
 const exceptions = @import("exceptions.zig");
+const frame = @import("frame.zig");
 const gdt = @import("gdt.zig");
 const limine = @import("limine.zig");
 const percpu = @import("percpu.zig");
 const serial = @import("serial.zig");
 
 const ap_timeout_ticks: u64 = 4_000_000_000;
+
+// Concurrent allocator stress handed to the APs through mp_info.extra_argument
+// before they are released; the BSP runs the same workload.
+const stress_magic: u64 = 0x5354_5245_5353;
+const stress_iterations: u64 = 2000;
+const stress_batch: usize = 4;
+
+var stress_done: u32 = 0; // atomic
+var stress_errors: u32 = 0; // atomic
 
 /// Sets up the per-CPU block for the boot processor and resets the AP flags.
 pub fn initBsp() bool {
@@ -36,7 +46,8 @@ pub fn initBsp() bool {
     return false;
 }
 
-/// Releases every AP and waits for them to report online. Smoke path.
+/// Releases every AP, runs the concurrent allocator stress on all CPUs, and
+/// waits for them to report online. Smoke path.
 pub fn run() bool {
     const console = serial.console;
     const mp = limine.mp() orelse return false;
@@ -46,35 +57,66 @@ pub fn run() bool {
     if (mp.cpu_count > percpu.max_cpus) return false;
     const count: usize = @intCast(mp.cpu_count);
 
+    const memmap = limine.memmap() orelse return false;
+    frame.init(memmap);
+
+    stress_done = 0;
+    stress_errors = 0;
+    const frames_before = frame.freeCount();
+
     const entry: *const fn (*limine.MpInfo) callconv(.c) void = @ptrCast(&apEntry);
     var index: usize = 0;
     while (index < count) : (index += 1) {
         if (cpus[index].lapic_id == mp.bsp_lapic_id) continue;
+        // Publish the job before the release store that wakes the AP.
+        cpus[index].extra_argument = stress_magic;
         @atomicStore(@TypeOf(cpus[index].goto_address), &cpus[index].goto_address, entry, .release);
     }
 
+    stressWorker();
+
     const deadline = cpu.rdtsc() + ap_timeout_ticks;
-    while (onlineCount(count) != count) {
+    while (@atomicLoad(u32, &stress_done, .acquire) != count) {
         if (cpu.rdtsc() > deadline) {
             console.write("SMP: timeout with ");
-            format.writeDec(console, onlineCount(count));
+            format.writeDec(console, @atomicLoad(u32, &stress_done, .monotonic));
             console.write(" of ");
             format.writeDec(console, count);
-            console.write(" online\n");
+            console.write(" stress workers done\n");
             return false;
         }
         cpu.pause();
     }
+    if (@atomicLoad(u32, &stress_errors, .monotonic) != 0) {
+        console.write("SMP: stress allocation errors\n");
+        return false;
+    }
+    const frames_after = frame.freeCount();
+    if (frames_after != frames_before) {
+        console.write("SMP: frame count ");
+        format.writeDec(console, frames_before);
+        console.write(" -> ");
+        format.writeDec(console, frames_after);
+        console.write("\n");
+        return false;
+    }
+    console.write("SMP: alloc stress ok\n");
 
     // Each block proves its own CPU filled it: self/index/apic_id only become
     // visible through the release store that also published `online`.
     index = 0;
     while (index < count) : (index += 1) {
         const block = percpu.at(index);
-        if (!percpu.isOnline(block)) return false;
-        if (block.self != block) return false;
-        if (block.index != @as(u32, @intCast(index))) return false;
-        if (block.apic_id != cpus[index].lapic_id) return false;
+        if (!percpu.isOnline(block) or
+            block.self != block or
+            block.index != @as(u32, @intCast(index)) or
+            block.apic_id != cpus[index].lapic_id)
+        {
+            console.write("SMP: bad per-CPU block at ");
+            format.writeDec(console, index);
+            console.write("\n");
+            return false;
+        }
 
         console.write("SMP: cpu ");
         format.writeDec(console, index);
@@ -90,13 +132,29 @@ pub fn run() bool {
     return true;
 }
 
-fn onlineCount(count: usize) usize {
-    var online: usize = 0;
-    var index: usize = 0;
-    while (index < count) : (index += 1) {
-        if (percpu.isOnline(percpu.at(index))) online += 1;
+/// Allocates and frees frames in batches; every CPU runs this at once.
+fn stressWorker() void {
+    var batch: [stress_batch]u64 = undefined;
+    var iterations: u64 = 0;
+    outer: while (iterations < stress_iterations) : (iterations += 1) {
+        var taken: usize = 0;
+        while (taken < stress_batch) : (taken += 1) {
+            batch[taken] = frame.allocFrame() orelse {
+                _ = @atomicRmw(u32, &stress_errors, .Add, 1, .monotonic);
+                const console = serial.console;
+                console.write("SMP: stress alloc failed on cpu ");
+                format.writeDec(console, percpu.current().index);
+                console.write(" at ");
+                format.writeDec(console, iterations);
+                console.write(", free ");
+                format.writeDec(console, frame.freeCount());
+                console.write("\n");
+                break :outer;
+            };
+        }
+        for (batch) |phys| frame.freeFrame(phys);
     }
-    return online;
+    _ = @atomicRmw(u32, &stress_done, .Add, 1, .release);
 }
 
 export fn apEntry() callconv(.naked) void {
@@ -111,6 +169,7 @@ export fn apEntry() callconv(.naked) void {
         \\ movq %%cr4, %%rax
         \\ orq $0x600, %%rax
         \\ movq %%rax, %%cr4
+        \\ andq $-16, %%rsp
         \\ call apMain
         \\ cli
         \\ 1: hlt
@@ -133,6 +192,7 @@ export fn apMain(info: *limine.MpInfo) callconv(.c) noreturn {
     exceptions.load();
     if (percpu.current() != block) park();
     percpu.markOnline(block);
+    if (info.extra_argument == stress_magic) stressWorker();
     park();
 }
 

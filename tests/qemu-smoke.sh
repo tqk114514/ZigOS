@@ -45,6 +45,9 @@ run_boot() {
     local label="$4"
     local smp="${5:-1}"
     local log="$ROOT/zig-out/serial-$label.log"
+    if [[ "$smp" != "1" ]]; then
+        log="$ROOT/zig-out/serial-$label-smp$smp.log"
+    fi
 
     cp "$kernel" "$ESP/kernel.elf"
     rm -f "$log"
@@ -76,17 +79,19 @@ run_boot() {
         tail -n 120 "$log" 2>/dev/null || true
         exit 1
     fi
-    echo "qemu-smoke: $label OK (exit $code)"
+    echo "qemu-smoke: $label smp=$smp OK (exit $code)"
 }
 
-run_boot "$KERNEL" 33 "ZigOS M1 OK" normal
-run_boot "$PANIC_KERNEL" 35 "PANIC: index out of bounds" panic
-run_boot "$EXCEPTION_KERNEL" 37 "EXCEPTION 3: breakpoint" exception
-run_boot "$NMI_KERNEL" 39 "EXCEPTION 2: non-maskable interrupt" nmi
-run_boot "$TIMER_KERNEL" 41 "TIMER OK" timer
-run_boot "$MEM_KERNEL" 45 "MEM OK" mem
-run_boot "$IRQ_KERNEL" 49 "IRQ OK" irq
-run_boot "$SMP_KERNEL" 57 "SMP OK" smp 4
+for smp in 1 4; do
+    run_boot "$KERNEL" 33 "ZigOS M1 OK" normal "$smp"
+    run_boot "$PANIC_KERNEL" 35 "PANIC: index out of bounds" panic "$smp"
+    run_boot "$EXCEPTION_KERNEL" 37 "EXCEPTION 3: breakpoint" exception "$smp"
+    run_boot "$NMI_KERNEL" 39 "EXCEPTION 2: non-maskable interrupt" nmi "$smp"
+    run_boot "$TIMER_KERNEL" 41 "TIMER OK" timer "$smp"
+    run_boot "$MEM_KERNEL" 45 "MEM OK" mem "$smp"
+    run_boot "$IRQ_KERNEL" 49 "IRQ OK" irq "$smp"
+    run_boot "$SMP_KERNEL" 57 "SMP OK" smp "$smp"
+done
 
 PANIC_LOG="$ROOT/zig-out/serial-panic.log"
 if ! grep -a -q "BACKTRACE:" "$PANIC_LOG" || ! grep -a -q "  #0 " "$PANIC_LOG"; then
@@ -132,10 +137,11 @@ if ! grep -a -q "MEM: heap pressure" "$MEM_LOG" ||
 fi
 echo "qemu-smoke: memory pressure OK"
 
-SMP_LOG="$ROOT/zig-out/serial-smp.log"
+SMP_LOG="$ROOT/zig-out/serial-smp-smp4.log"
 if ! grep -a -q "SMP: cpu 3 apic" "$SMP_LOG" ||
-   ! grep -a -q "SMP: cpus 4 online 4" "$SMP_LOG"; then
-    echo "qemu-smoke: smp serial output missing the per-CPU evidence" >&2
+   ! grep -a -q "SMP: cpus 4 online 4" "$SMP_LOG" ||
+   ! grep -a -q "SMP: alloc stress ok" "$SMP_LOG"; then
+    echo "qemu-smoke: smp serial output missing the per-CPU or stress evidence" >&2
     tail -n 120 "$SMP_LOG" 2>/dev/null || true
     exit 1
 fi
