@@ -3,6 +3,7 @@ const port = @import("port.zig");
 const serial = @import("serial.zig");
 const limine = @import("limine.zig");
 const backtrace = @import("backtrace.zig");
+const bench = @import("bench.zig");
 const exceptions = @import("exceptions.zig");
 const extirq = @import("extirq.zig");
 const gdt = @import("gdt.zig");
@@ -38,6 +39,10 @@ pub fn runMemorySmoke() bool {
 
 pub fn runExternalSmoke() bool {
     return extirq.run();
+}
+
+pub fn runBench() bool {
+    return bench.run();
 }
 
 pub fn halt() noreturn {

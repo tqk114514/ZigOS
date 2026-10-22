@@ -71,6 +71,7 @@ pub fn build(b: *std.Build) void {
     const timer_kernel = addKernel(b, kernel_target, optimize, "kernel-timer", .{ .timer_smoke = true });
     const mem_kernel = addKernel(b, kernel_target, optimize, "kernel-mem", .{ .mem_smoke = true });
     const irq_kernel = addKernel(b, kernel_target, optimize, "kernel-irq", .{ .irq_smoke = true });
+    const bench_kernel = addKernel(b, kernel_target, optimize, "kernel-bench", .{ .bench_smoke = true });
 
     const install_kernel = b.addInstallArtifact(kernel, .{ .dest_sub_path = "kernel.elf" });
     const install_panic_kernel = b.addInstallArtifact(panic_kernel, .{ .dest_sub_path = "kernel-panic.elf" });
@@ -79,6 +80,7 @@ pub fn build(b: *std.Build) void {
     const install_timer_kernel = b.addInstallArtifact(timer_kernel, .{ .dest_sub_path = "kernel-timer.elf" });
     const install_mem_kernel = b.addInstallArtifact(mem_kernel, .{ .dest_sub_path = "kernel-mem.elf" });
     const install_irq_kernel = b.addInstallArtifact(irq_kernel, .{ .dest_sub_path = "kernel-irq.elf" });
+    const install_bench_kernel = b.addInstallArtifact(bench_kernel, .{ .dest_sub_path = "kernel-bench.elf" });
 
     const kernel_step = b.step("kernel", "Build the freestanding kernel");
     kernel_step.dependOn(&install_kernel.step);
@@ -101,6 +103,9 @@ pub fn build(b: *std.Build) void {
     const irq_kernel_step = b.step("kernel-irq", "Build the kernel with the external IRQ smoke path");
     irq_kernel_step.dependOn(&install_irq_kernel.step);
 
+    const bench_kernel_step = b.step("kernel-bench", "Build the kernel with the benchmark path");
+    bench_kernel_step.dependOn(&install_bench_kernel.step);
+
     const smoke_cmd = b.addSystemCommand(&.{ "bash", "tests/qemu-smoke.sh" });
     smoke_cmd.setCwd(b.path("."));
     smoke_cmd.step.dependOn(&install_kernel.step);
@@ -113,6 +118,13 @@ pub fn build(b: *std.Build) void {
 
     const smoke_step = b.step("qemu-smoke", "Boot the kernel smoke variants in QEMU");
     smoke_step.dependOn(&smoke_cmd.step);
+
+    const bench_cmd = b.addSystemCommand(&.{ "bash", "tests/qemu-bench.sh" });
+    bench_cmd.setCwd(b.path("."));
+    bench_cmd.step.dependOn(&install_bench_kernel.step);
+
+    const bench_step = b.step("bench", "Run the kernel benchmarks under QEMU icount and compare with the baseline");
+    bench_step.dependOn(&bench_cmd.step);
 
     b.default_step.dependOn(&run_check.step);
     b.default_step.dependOn(&run_check_tests.step);
@@ -129,6 +141,7 @@ const SmokeOptions = struct {
     timer_smoke: bool = false,
     mem_smoke: bool = false,
     irq_smoke: bool = false,
+    bench_smoke: bool = false,
 };
 
 fn addKernel(
@@ -145,6 +158,7 @@ fn addKernel(
     options.addOption(bool, "timer_smoke", smoke.timer_smoke);
     options.addOption(bool, "mem_smoke", smoke.mem_smoke);
     options.addOption(bool, "irq_smoke", smoke.irq_smoke);
+    options.addOption(bool, "bench_smoke", smoke.bench_smoke);
 
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),

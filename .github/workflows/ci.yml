@@ -37,9 +37,9 @@ jobs:
       - name: Dependency DAG
         run: zig build check-deps
       - name: Kernel build (Debug)
-        run: zig build kernel kernel-panic kernel-exception kernel-nmi kernel-timer kernel-mem kernel-irq -Doptimize=Debug
+        run: zig build kernel kernel-panic kernel-exception kernel-nmi kernel-timer kernel-mem kernel-irq kernel-bench -Doptimize=Debug
       - name: Kernel build (ReleaseSafe)
-        run: zig build kernel kernel-panic kernel-exception kernel-nmi kernel-timer kernel-mem kernel-irq -Doptimize=ReleaseSafe
+        run: zig build kernel kernel-panic kernel-exception kernel-nmi kernel-timer kernel-mem kernel-irq kernel-bench -Doptimize=ReleaseSafe
 
   qemu-smoke:
     name: qemu-smoke
@@ -56,4 +56,6 @@ jobs:
       - name: QEMU smoke (Debug)
         run: zig build qemu-smoke -Doptimize=Debug
       - name: QEMU smoke (ReleaseSafe)
-        run: zig build qemu-smoke -Doptimize=ReleaseSafe
+        run: zig build qemu-smoke
+      - name: QEMU bench (ReleaseSafe)
+        run: zig build bench -Doptimize=ReleaseSafe

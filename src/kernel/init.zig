@@ -48,6 +48,16 @@ pub fn main() noreturn {
         }
     }
 
+    if (config.bench_smoke) {
+        if (!arch.runBench()) {
+            console.write("BENCH FAIL\n");
+            arch.qemuExit(0x1b); // 55
+        } else {
+            arch.qemuExit(0x1a); // 53
+        }
+        arch.halt();
+    }
+
     if (config.nmi_smoke) {
         asm volatile ("int $2");
     }
