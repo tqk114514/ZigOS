@@ -16,6 +16,12 @@ pub fn main() noreturn {
         arch.halt();
     }
 
+    arch.initIdt();
+
+    if (config.exception_smoke) {
+        asm volatile ("int3");
+    }
+
     if (config.panic_smoke) {
         var probe: [1]u8 = .{0};
         const index: usize = @intCast(arch.limineLoadedBaseRevision());

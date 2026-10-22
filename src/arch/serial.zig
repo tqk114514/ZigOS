@@ -1,9 +1,12 @@
 //! COM1 serial output, 115200 8N1. All ready-waits are bounded.
 
+const hal = @import("../hal/interface.zig");
 const port = @import("port.zig");
 
 const com1: u16 = 0x3f8;
 const max_spin: usize = 1_000_000;
+
+pub const console = hal.Console{ .write_fn = write };
 
 pub fn init() void {
     port.outb(com1 + 1, 0x00); // interrupt enable: none

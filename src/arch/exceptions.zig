@@ -1,0 +1,154 @@
+//! IDT and fatal exception entry. The IDT is populated once at boot and then
+//! only read by software; hardware reads it via lidt.
+
+const format = @import("../lib/interface.zig").format;
+const port = @import("port.zig");
+const serial = @import("serial.zig");
+
+const isr_count: usize = 32;
+const idt_entries: usize = 256;
+
+const IdtEntry = extern struct {
+    offset_low: u16,
+    selector: u16,
+    ist: u8,
+    type_attr: u8,
+    offset_mid: u16,
+    offset_high: u32,
+    reserved: u32,
+};
+
+const ExceptionFrame = extern struct {
+    vector: u64,
+    error_code: u64,
+    rip: u64,
+    cs: u64,
+    rflags: u64,
+    rsp: u64,
+    ss: u64,
+};
+
+extern const isr_stub_table: [isr_count]u64;
+
+var idt: [idt_entries]IdtEntry align(16) = undefined;
+var idtr: [10]u8 align(1) = undefined;
+
+pub fn init() void {
+    const cs = currentCs();
+    for (&idt) |*entry| {
+        entry.* = .{
+            .offset_low = 0,
+            .selector = 0,
+            .ist = 0,
+            .type_attr = 0,
+            .offset_mid = 0,
+            .offset_high = 0,
+            .reserved = 0,
+        };
+    }
+    for (0..isr_count) |i| {
+        idt[i] = makeEntry(isr_stub_table[i], cs);
+    }
+
+    // lidt consumes a packed 10-byte descriptor (u16 limit, u64 base). Build it
+    // as bytes so the inline asm memory operand cannot pick up struct padding.
+    const limit: u16 = @intCast(@sizeOf(@TypeOf(idt)) - 1);
+    const base: u64 = @intFromPtr(&idt);
+    idtr[0] = @truncate(limit);
+    idtr[1] = @truncate(limit >> 8);
+    idtr[2] = @truncate(base);
+    idtr[3] = @truncate(base >> 8);
+    idtr[4] = @truncate(base >> 16);
+    idtr[5] = @truncate(base >> 24);
+    idtr[6] = @truncate(base >> 32);
+    idtr[7] = @truncate(base >> 40);
+    idtr[8] = @truncate(base >> 48);
+    idtr[9] = @truncate(base >> 56);
+
+    // SAFETY: the IDT is fully populated and 16-byte aligned; lidt is privileged.
+    const idtr_ptr: *align(1) const [10]u8 = &idtr;
+    asm volatile ("lidt (%[ptr])"
+        :
+        : [ptr] "r" (idtr_ptr),
+        : .{ .memory = true });
+}
+
+export fn exceptionHandler(frame: *const ExceptionFrame) callconv(.c) noreturn {
+    const console = serial.console;
+
+    console.write("\nEXCEPTION ");
+    format.writeDec(console, frame.vector);
+    console.write(": ");
+    console.write(exceptionName(frame.vector));
+    console.write("\n  error: ");
+    format.writeHex(console, frame.error_code, 16);
+    console.write("\n  rip: ");
+    format.writeHex(console, frame.rip, 16);
+    console.write(" cs: ");
+    format.writeHex(console, frame.cs, 4);
+    console.write("\n  rflags: ");
+    format.writeHex(console, frame.rflags, 16);
+    console.write(" rsp: ");
+    format.writeHex(console, frame.rsp, 16);
+    console.write(" ss: ");
+    format.writeHex(console, frame.ss, 4);
+    console.write("\n");
+
+    // QEMU isa-debug-exit: (0x12 << 1) | 1 == 37.
+    port.outb(0xf4, 0x12);
+    while (true) {
+        // SAFETY: fatal exception path; interrupts stay disabled.
+        asm volatile ("cli\n\thlt");
+    }
+}
+
+fn makeEntry(addr: u64, cs: u16) IdtEntry {
+    return .{
+        .offset_low = @truncate(addr),
+        .selector = cs,
+        .ist = 0,
+        .type_attr = 0x8e,
+        .offset_mid = @truncate(addr >> 16),
+        .offset_high = @truncate(addr >> 32),
+        .reserved = 0,
+    };
+}
+
+fn currentCs() u16 {
+    // SAFETY: reading the current code selector at CPL0.
+    return asm volatile ("mov %%cs, %[out]"
+        : [out] "=r" (-> u16),
+    );
+}
+
+fn exceptionName(vector: u64) []const u8 {
+    return switch (vector) {
+        0 => "divide error",
+        1 => "debug",
+        2 => "non-maskable interrupt",
+        3 => "breakpoint",
+        4 => "overflow",
+        5 => "bound range exceeded",
+        6 => "invalid opcode",
+        7 => "device not available",
+        8 => "double fault",
+        9 => "coprocessor segment overrun",
+        10 => "invalid TSS",
+        11 => "segment not present",
+        12 => "stack-segment fault",
+        13 => "general protection fault",
+        14 => "page fault",
+        15 => "reserved",
+        16 => "x87 floating-point exception",
+        17 => "alignment check",
+        18 => "machine check",
+        19 => "SIMD floating-point exception",
+        20 => "virtualization exception",
+        21 => "control protection exception",
+        22...28 => "reserved",
+        29 => "VMM communication exception",
+        30 => "security exception",
+        31 => "reserved",
+        else => "unknown",
+    };
+}

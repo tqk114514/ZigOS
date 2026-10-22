@@ -16,6 +16,7 @@ DEPS="$ROOT/deps/limine"
 LIMINE_DIR="$DEPS/limine-binary"
 KERNEL="$ROOT/zig-out/bin/kernel.elf"
 PANIC_KERNEL="$ROOT/zig-out/bin/kernel-panic.elf"
+EXCEPTION_KERNEL="$ROOT/zig-out/bin/kernel-exception.elf"
 BOOT_CONF="$ROOT/boot/limine.conf"
 ESP="$ROOT/zig-out/esp"
 ACCEL="${QEMU_ACCEL:-tcg}"
@@ -26,6 +27,10 @@ if [[ ! -f "$KERNEL" ]]; then
 fi
 if [[ ! -f "$PANIC_KERNEL" ]]; then
     echo "qemu-smoke: missing $PANIC_KERNEL; run 'zig build kernel-panic'" >&2
+    exit 2
+fi
+if [[ ! -f "$EXCEPTION_KERNEL" ]]; then
+    echo "qemu-smoke: missing $EXCEPTION_KERNEL; run 'zig build kernel-exception'" >&2
     exit 2
 fi
 
@@ -149,6 +154,7 @@ run_boot() {
 stage_esp
 run_boot "$KERNEL" 33 "ZigOS M0 OK" normal
 run_boot "$PANIC_KERNEL" 35 "PANIC: index out of bounds" panic
+run_boot "$EXCEPTION_KERNEL" 37 "EXCEPTION 3: breakpoint" exception
 
 PANIC_LOG="$ROOT/zig-out/serial-panic.log"
 if ! grep -a -q "BACKTRACE:" "$PANIC_LOG" || ! grep -a -q "  #0 " "$PANIC_LOG"; then
@@ -157,3 +163,11 @@ if ! grep -a -q "BACKTRACE:" "$PANIC_LOG" || ! grep -a -q "  #0 " "$PANIC_LOG"; 
     exit 1
 fi
 echo "qemu-smoke: backtrace OK"
+
+EXCEPTION_LOG="$ROOT/zig-out/serial-exception.log"
+if ! grep -a -q "rip:" "$EXCEPTION_LOG"; then
+    echo "qemu-smoke: exception serial output missing CPU frame" >&2
+    tail -n 120 "$EXCEPTION_LOG" 2>/dev/null || true
+    exit 1
+fi
+echo "qemu-smoke: exception frame OK"
