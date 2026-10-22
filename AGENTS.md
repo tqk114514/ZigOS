@@ -4,7 +4,7 @@
 
 ## 项目
 
-面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。当前 pre-M0：宪法、规范、依赖检查器和 CI 已就位，内核代码从 M0 开始。
+面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。当前 M0：Limine/UEFI 启动、COM1 串口、panic + backtrace、正常/panic QEMU smoke 已落地；M1 未开始。
 
 v1 = M0 启动 → M1 内存/中断 → M2 SMP/调度/syscall/用户态 → M3 VFS/virtio-blk/shell。网络、可写文件系统、真实硬件、多架构在 v1 之后。v1 明确不做 POSIX/GUI/USB/热加载模块/微内核 IPC；范围变更必须走 ADR。
 
@@ -22,7 +22,7 @@ v1 = M0 启动 → M1 内存/中断 → M2 SMP/调度/syscall/用户态 → M3 V
 违反以下规则的代码不能合入：
 
 - Zig 版本 0.17.0。不升级编译器、不加外部包、不引入 libc 或动态链接。
-- 模块依赖只能按 DAG。跨模块 import 只能指向 `<module>/interface.zig`；import 必须是单行字面量。
+- 模块依赖只能按 DAG。跨模块 import 只能指向 `<module>/interface.zig`；import 必须是单行字面量。只有 `kernel` 可以导入构建期 `config` 模块。
 - 禁止 `std.Io`、`std.fs`、`std.process`、`std.Thread`、`std.heap`、`std.os`、`std.posix`、`std.net`、`std.debug`、`std.log`、`std.time`。需要这些能力时实现内核自己的 HAL/日志/panic。
 - 所有分配显式传入 allocator；IRQ 上下文和热路径零分配；内核堆有上限、可统计。
 - 用户指针不可信，只能经过 `copy_from_user`/`copy_to_user`。
@@ -41,9 +41,11 @@ zig fmt --check .
 zig build test
 zig build test -Doptimize=ReleaseSafe
 zig build check-deps
+zig build kernel
+zig build qemu-smoke
 ```
 
-M0 起增加 `zig build qemu-smoke`；M3 起增加 fuzz smoke。
+`zig build qemu-smoke` 需要本机 QEMU + OVMF；脚本会按固定版本/哈希下载 Limine。M0 同时验证 Debug 和 ReleaseSafe：`zig build qemu-smoke -Doptimize=ReleaseSafe`。M3 起增加 fuzz smoke。
 
 测试要求见 [ENGINEERING 第 3 节](docs/ENGINEERING.md#3-测试)：纯逻辑必须有 host 单测；硬件路径必须有 QEMU 集成测试或可复现的手动验证；bug 修复先有失败测试。覆盖率是 host 代码的地板（80%），不要写无断言的“调用一下”测试。
 
@@ -65,8 +67,10 @@ M0 起增加 `zig build qemu-smoke`；M3 起增加 fuzz smoke。
 - [docs/CHARTER.md](docs/CHARTER.md) — 宪法：定位、v1 范围、非目标、红线、修订程序。
 - [docs/ENGINEERING.md](docs/ENGINEERING.md) — Zig/OS 规则、测试、提交格式、评审清单。
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 模块职责、依赖 DAG、接口边界、启动路径。
-- [docs/adr/](docs/adr/) — 架构决策记录；新决策按 [ADR-0001](docs/adr/0001-kernel-shape-and-v1-scope.md) 的格式写。
+- [docs/adr/](docs/adr/) — 架构决策记录；[ADR-0001](docs/adr/0001-kernel-shape-and-v1-scope.md) 定形态，[ADR-0002](docs/adr/0002-m0-boot-chain.md) 定 M0 启动链。
+- [boot/limine.conf](boot/limine.conf) — Limine 启动配置（M0）。
+- [tests/qemu-smoke.sh](tests/qemu-smoke.sh) — OVMF + vvfat + Limine 的正常/panic smoke。
 - [tools/check_deps.zig](tools/check_deps.zig) — 依赖与 import 规则的执行者。
 - [.gitmessage](.gitmessage) — 提交消息模板；用 `git config commit.template .gitmessage` 启用。
 - [build.zig](build.zig) / [build.zig.zon](build.zig.zon) — 构建入口，Zig 0.17.0。
-- `src/` — 内核源码（M0 起）；`tests/` — QEMU 集成测试（M0 起）。
+- `src/` — 内核源码；`tests/` — QEMU 集成测试；`deps/` — smoke 下载的 Limine（gitignored）。

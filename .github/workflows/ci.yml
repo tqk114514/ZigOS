@@ -36,3 +36,24 @@ jobs:
         run: zig build test -Doptimize=ReleaseSafe
       - name: Dependency DAG
         run: zig build check-deps
+      - name: Kernel build (Debug)
+        run: zig build kernel
+      - name: Kernel build (ReleaseSafe)
+        run: zig build kernel -Doptimize=ReleaseSafe
+
+  qemu-smoke:
+    name: qemu-smoke
+    runs-on: ubuntu-26.04
+    needs: check
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: tqk114514/setup-zig@v2.2.1-node24
+        with:
+          version: 0.17.0
+      - name: Install QEMU and OVMF
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
+      - name: QEMU smoke (Debug)
+        run: zig build qemu-smoke
+      - name: QEMU smoke (ReleaseSafe)
+        run: zig build qemu-smoke -Doptimize=ReleaseSafe

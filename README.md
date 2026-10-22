@@ -2,7 +2,7 @@
 
 一个用 Zig 编写的模块化宏内核，第一目标平台是 QEMU/virt 上的 x86_64。
 
-当前状态：pre-M0。已落地项目宪法、工程规范、依赖检查器和 CI；内核代码从 M0 开始。
+当前状态：M0。Limine/UEFI 启动、COM1 串口、panic + backtrace、正常/panic QEMU smoke 已落地；M1 内存与中断未开始。
 
 ## 文档
 
@@ -12,32 +12,41 @@
 - [ENGINEERING](docs/ENGINEERING.md) — Zig/OS 代码规则、测试策略、提交与评审纪律
 - [ARCHITECTURE](docs/ARCHITECTURE.md) — 模块依赖图、接口边界、启动路径
 - [ADR-0001](docs/adr/0001-kernel-shape-and-v1-scope.md) — 宏内核与 v1 范围的决策记录
+- [ADR-0002](docs/adr/0002-m0-boot-chain.md) — M0 启动链、镜像布局与 QEMU smoke
 
 ## 工具链
 
 - Zig 0.17.0（CI 固定；升级走 ADR）
-- QEMU（M0 起需要）
-- Linux 或 Windows 主机均可构建 host 检查；QEMU smoke 在 Linux CI 运行
+- QEMU + OVMF（M0 起；Windows 使用 QEMU 自带的 edk2 firmware）
+- Limine v12.9.4 由 [tests/qemu-smoke.sh](tests/qemu-smoke.sh) 按固定哈希下载到 `deps/`（不提交）
+- Linux/Windows 都能做 host 检查和交叉编译；QEMU smoke 在 Linux CI 运行，Windows 本地也可运行
 
 ## 本地检查
 
 ```sh
+zig fmt --check .
 zig build test
 zig build test -Doptimize=ReleaseSafe
 zig build check-deps
-zig fmt --check .
+zig build kernel
+zig build qemu-smoke
+zig build qemu-smoke -Doptimize=ReleaseSafe
 ```
 
-`zig build` 默认运行 `check-deps` 和 `test`。
+`zig build` 默认运行 `check-deps`、host tests，并构建 Debug kernel。
 
-`check-deps` 强制模块依赖 DAG、跨模块 `interface.zig` 边界、字面量 import、禁用 std 命名空间。`src/` 目前为空；检查器在 M0 起开始覆盖真实内核代码。
+`zig build qemu-smoke` 需要 QEMU + OVMF；脚本会下载 Limine，然后启动正常和 panic 两个变体。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
+
+`check-deps` 强制模块依赖 DAG、跨模块 `interface.zig` 边界、字面量 import、禁用 std 命名空间，以及只有 `kernel` 可以导入构建期 `config`。
 
 ## 目录
 
 ```
 build.zig / build.zig.zon   构建入口，Zig 0.17.0
-src/                        内核源码（M0 起）
+boot/limine.conf            Limine 启动配置
+src/                        内核源码
+tests/qemu-smoke.sh         OVMF + vvfat + Limine 的正常/panic smoke
 tools/check_deps.zig        依赖与 import 规则检查器
 docs/                       宪法、规范、架构、ADR
-tests/                      QEMU 集成测试（M0 起）
+deps/                       smoke 下载的 Limine（gitignored）
 ```

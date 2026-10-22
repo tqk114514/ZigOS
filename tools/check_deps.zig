@@ -163,6 +163,18 @@ fn analyzeFile(
     for (imports.items) |import| {
         if (std.mem.eql(u8, import.path, "std") or std.mem.eql(u8, import.path, "builtin")) continue;
 
+        if (std.mem.eql(u8, import.path, "config")) {
+            if (source_module != .kernel) {
+                try diags.add(
+                    rel_path,
+                    import.line,
+                    "only the kernel module may import the build config module",
+                    .{},
+                );
+            }
+            continue;
+        }
+
         if (!std.mem.endsWith(u8, import.path, ".zig")) {
             try diags.add(
                 rel_path,
@@ -558,6 +570,25 @@ test "banned std namespaces are rejected outside strings and comments" {
     try expectViolation(arena, "mm/page.zig", "const Io = std.Io;", "std.Io");
     try expectClean(arena, "mm/page.zig", "// std.Io is userspace-only\nconst x = 1;");
     try expectClean(arena, "mm/page.zig", "const s = \"std.Io\";");
+}
+
+test "only the kernel may import the build config module" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    try expectClean(arena, "main.zig", "const config = @import(\"config\");");
+    try expectClean(
+        arena,
+        "kernel/init.zig",
+        "const config = @import(\"config\");",
+    );
+    try expectViolation(
+        arena,
+        "arch/cpu.zig",
+        "const config = @import(\"config\");",
+        "only the kernel module may import the build config module",
+    );
 }
 
 test "fs and drivers may block through sched" {

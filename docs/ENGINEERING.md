@@ -35,6 +35,7 @@
 
 - `@import` 的参数必须是单行字面量字符串；禁止计算 import。
 - 内核模块之间只能导入 `<module>/interface.zig`；模块内部文件可以互相导入。`zig build check-deps` 强制。
+- `kernel` 可以导入构建系统提供的 `config` 模块（编译期开关）；其他模块禁止。`check-deps` 强制。
 - 只允许 `std`、`builtin` 和项目内 `.zig` 文件；禁止外部包。
 - 内核代码只使用 std 的纯计算子集：`std.mem`、`std.math`、`std.atomic`、`std.fmt` 等。
 - 禁止 `std.Io`、`std.fs`、`std.process`、`std.Thread`、`std.heap`、`std.os`、`std.posix`、`std.net`、`std.debug`、`std.log`、`std.time`；`check-deps` 扫描。需要这些能力时，写内核自己的 HAL/实现。

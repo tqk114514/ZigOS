@@ -1,6 +1,6 @@
 # 架构
 
-状态：v1 草案。依赖图是强制的；模块内部设计随里程碑和 ADR 演进。
+状态：v1 草案。依赖图是强制的；模块内部设计随里程碑和 ADR 演进。M0 的启动链、镜像布局和 QEMU smoke 见 [ADR-0002](adr/0002-m0-boot-chain.md)。
 
 ## 1. 形态
 
@@ -29,9 +29,11 @@ src/
   fs/               VFS、initramfs、块缓存、文件对象
   net/              网络栈（v2）
   drivers/          virtio-blk、virtio-net、console 等具体驱动
+boot/limine.conf    Limine 启动配置（M0）
 tests/              QEMU 集成测试与测试夹具（不属于内核依赖图）
 tools/              host 工具，如 check_deps
 docs/adr/           架构决策记录
+deps/               smoke 下载的 Limine 等缓存（gitignored）
 ```
 
 ## 3. 依赖图
@@ -55,6 +57,7 @@ docs/adr/           架构决策记录
 - 模块内部文件可以自由互相导入。
 - 禁止反向依赖和环。`fs`/`net`/`drivers` 可以通过 `sched` 阻塞等待，但 `sched` 不能反过来依赖它们。
 - 具体驱动实现 `hal` 中的接口；`fs`/`net` 只依赖接口，由 `kernel` 在初始化时注入。
+- `kernel` 可以导入构建系统提供的 `config` 模块（编译期开关，目前只有 `panic_smoke`）；其他模块禁止。`check-deps` 强制。
 - `tests/` 可以导入任意接口，不受内核依赖图限制；`tools/` 是 host 代码，不进入内核构建。
 - `tools/check_deps.zig` 是依赖图的执行者；本表与它必须一致。修改依赖图需要 ADR，并同时更新两者。
 
