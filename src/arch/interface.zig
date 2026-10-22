@@ -5,6 +5,7 @@ const limine = @import("limine.zig");
 const backtrace = @import("backtrace.zig");
 const exceptions = @import("exceptions.zig");
 const gdt = @import("gdt.zig");
+const memory = @import("memory.zig");
 const timer = @import("timer.zig");
 
 pub const serial_console = serial.console;
@@ -28,6 +29,10 @@ pub fn initIdt() void {
 
 pub fn initTimer() void {
     timer.init();
+}
+
+pub fn runMemorySmoke() bool {
+    return memory.run();
 }
 
 pub fn halt() noreturn {

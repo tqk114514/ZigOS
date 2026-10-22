@@ -26,6 +26,17 @@ pub fn main() noreturn {
         }
     }
 
+    if (config.mem_smoke) {
+        if (arch.runMemorySmoke()) {
+            console.write("MEM OK\n");
+            arch.qemuExit(0x16); // 45
+        } else {
+            console.write("MEM FAIL\n");
+            arch.qemuExit(0x17); // 47
+        }
+        arch.halt();
+    }
+
     if (config.nmi_smoke) {
         asm volatile ("int $2");
     }
