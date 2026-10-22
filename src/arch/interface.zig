@@ -8,6 +8,7 @@ const exceptions = @import("exceptions.zig");
 const extirq = @import("extirq.zig");
 const gdt = @import("gdt.zig");
 const memory = @import("memory.zig");
+const smp = @import("smp.zig");
 const timer = @import("timer.zig");
 
 pub const serial_console = serial.console;
@@ -27,6 +28,14 @@ pub fn initGdt() void {
 
 pub fn initIdt() void {
     exceptions.init();
+}
+
+pub fn initPerCpu() bool {
+    return smp.initBsp();
+}
+
+pub fn runSmpSmoke() bool {
+    return smp.run();
 }
 
 pub fn initTimer() void {

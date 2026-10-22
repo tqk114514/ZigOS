@@ -9,8 +9,8 @@ loadGdtAndTss:
     movw %ax, %ds
     movw %ax, %es
     movw %ax, %ss
-    movw %ax, %fs
-    movw %ax, %gs
+    # FS/GS are left alone on purpose: loading their selectors in 64-bit mode
+    # zeroes the segment base, and those bases live in the FS/GS MSRs.
     pushq $0x08
     leaq 1f(%rip), %rax
     pushq %rax

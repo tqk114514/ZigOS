@@ -14,6 +14,7 @@ NMI_KERNEL="$ROOT/zig-out/bin/kernel-nmi.elf"
 TIMER_KERNEL="$ROOT/zig-out/bin/kernel-timer.elf"
 MEM_KERNEL="$ROOT/zig-out/bin/kernel-mem.elf"
 IRQ_KERNEL="$ROOT/zig-out/bin/kernel-irq.elf"
+SMP_KERNEL="$ROOT/zig-out/bin/kernel-smp.elf"
 ACCEL="${QEMU_ACCEL:-tcg}"
 
 check_kernel() {
@@ -30,6 +31,7 @@ check_kernel "$NMI_KERNEL" kernel-nmi
 check_kernel "$TIMER_KERNEL" kernel-timer
 check_kernel "$MEM_KERNEL" kernel-mem
 check_kernel "$IRQ_KERNEL" kernel-irq
+check_kernel "$SMP_KERNEL" kernel-smp
 
 # shellcheck source=tests/qemu-env.sh
 source "$ROOT/tests/qemu-env.sh"
@@ -41,6 +43,7 @@ run_boot() {
     local expected_exit="$2"
     local marker="$3"
     local label="$4"
+    local smp="${5:-1}"
     local log="$ROOT/zig-out/serial-$label.log"
 
     cp "$kernel" "$ESP/kernel.elf"
@@ -51,6 +54,7 @@ run_boot() {
     timeout 120 "$QEMU_BIN" \
         -M q35 \
         -m 512M \
+        -smp "$smp" \
         -cpu "${QEMU_CPU:-max}" \
         -accel "$ACCEL" \
         "${FW_ARGS[@]}" \
@@ -82,6 +86,7 @@ run_boot "$NMI_KERNEL" 39 "EXCEPTION 2: non-maskable interrupt" nmi
 run_boot "$TIMER_KERNEL" 41 "TIMER OK" timer
 run_boot "$MEM_KERNEL" 45 "MEM OK" mem
 run_boot "$IRQ_KERNEL" 49 "IRQ OK" irq
+run_boot "$SMP_KERNEL" 57 "SMP OK" smp 4
 
 PANIC_LOG="$ROOT/zig-out/serial-panic.log"
 if ! grep -a -q "BACKTRACE:" "$PANIC_LOG" || ! grep -a -q "  #0 " "$PANIC_LOG"; then
@@ -126,3 +131,12 @@ if ! grep -a -q "MEM: heap pressure" "$MEM_LOG" ||
     exit 1
 fi
 echo "qemu-smoke: memory pressure OK"
+
+SMP_LOG="$ROOT/zig-out/serial-smp.log"
+if ! grep -a -q "SMP: cpu 3 apic" "$SMP_LOG" ||
+   ! grep -a -q "SMP: cpus 4 online 4" "$SMP_LOG"; then
+    echo "qemu-smoke: smp serial output missing the per-CPU evidence" >&2
+    tail -n 120 "$SMP_LOG" 2>/dev/null || true
+    exit 1
+fi
+echo "qemu-smoke: SMP CPUs OK"

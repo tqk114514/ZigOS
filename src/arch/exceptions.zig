@@ -81,8 +81,13 @@ pub fn init() void {
     idtr[8] = @truncate(base >> 48);
     idtr[9] = @truncate(base >> 56);
 
-    // SAFETY: the IDT is fully populated and 16-byte aligned; lidt is privileged.
+    load();
+}
+
+/// Loads the built IDT on the current CPU.
+pub fn load() void {
     const idtr_ptr: *align(1) const [10]u8 = &idtr;
+    // SAFETY: the IDT is fully populated and 16-byte aligned; lidt is privileged.
     asm volatile ("lidt (%[ptr])"
         :
         : [ptr] "r" (idtr_ptr),

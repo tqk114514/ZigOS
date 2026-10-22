@@ -16,6 +16,11 @@ pub fn main() noreturn {
         arch.halt();
     }
 
+    if (!arch.initPerCpu()) {
+        console.write("PERCPU FAIL\n");
+        arch.qemuExit(0x1d); // 59
+        arch.halt();
+    }
     arch.initGdt();
     arch.initIdt();
 
@@ -46,6 +51,17 @@ pub fn main() noreturn {
         while (true) {
             asm volatile ("hlt");
         }
+    }
+
+    if (config.smp_smoke) {
+        if (arch.runSmpSmoke()) {
+            console.write("SMP OK\n");
+            arch.qemuExit(0x1c); // 57
+        } else {
+            console.write("SMP FAIL\n");
+            arch.qemuExit(0x1d); // 59
+        }
+        arch.halt();
     }
 
     if (config.bench_smoke) {

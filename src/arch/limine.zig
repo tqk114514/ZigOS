@@ -1,4 +1,5 @@
-//! Limine requests: base revision 6, HHDM, the physical memory map, and RSDP.
+//! Limine requests: base revision 6, HHDM, the physical memory map, RSDP, and
+//! the SMP processor table.
 
 const base_magic: u64 = 0xf9562b2d5c95a6c8;
 const base_magic2: u64 = 0x6a7b384944536bdc;
@@ -79,6 +80,37 @@ export var limine_hhdm_request: HhdmRequest linksection(".limine_requests") = .{
 export var limine_memmap_request: MemmapRequest linksection(".limine_requests") = .{};
 export var limine_rsdp_request: RsdpRequest linksection(".limine_requests") = .{};
 
+pub const MpInfo = extern struct {
+    processor_id: u32,
+    lapic_id: u32,
+    reserved: u64,
+    goto_address: ?*const fn (*MpInfo) callconv(.c) void,
+    extra_argument: u64,
+};
+
+pub const MpResponse = extern struct {
+    revision: u64,
+    flags: u32,
+    bsp_lapic_id: u32,
+    cpu_count: u64,
+    cpus: ?[*]*MpInfo,
+};
+
+const MpRequest = extern struct {
+    id: [4]u64 = .{
+        common_magic0,
+        common_magic1,
+        0x95a67b819a1b857e,
+        0xa0b61b723b6a73e0,
+    },
+    revision: u64 = 0,
+    response: ?*const MpResponse = null,
+    // LIMINE_MP_REQUEST_X86_64_X2APIC: keep x2APIC instead of falling back.
+    flags: u64 = 1,
+};
+
+export var limine_mp_request: MpRequest linksection(".limine_requests") = .{};
+
 export var limine_requests_end: [2]u64 linksection(".limine_requests_end") = .{
     0xadc0e0531bb10d03,
     0x9572709f31764c62,
@@ -106,4 +138,8 @@ pub fn rsdp() ?u64 {
     const address = response.address orelse return null;
     // At base revision >= 4 the RSDP address is HHDM-mapped, not physical.
     return @intFromPtr(address);
+}
+
+pub fn mp() ?*const MpResponse {
+    return limine_mp_request.response;
 }
