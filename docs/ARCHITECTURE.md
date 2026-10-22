@@ -1,6 +1,6 @@
 # 架构
 
-状态：v1 草案。依赖图是强制的；模块内部设计随里程碑和 ADR 演进。M0 的启动链、镜像布局和 QEMU smoke 见 [ADR-0002](adr/0002-m0-boot-chain.md)；M1 的 IDT/致命异常入口见 [ADR-0003](adr/0003-m1-fatal-exception-entry.md)，GDT/TSS/IST 见 [ADR-0004](adr/0004-m1-gdt-tss-ist.md)，x2APIC timer/IRQ 见 [ADR-0005](adr/0005-m1-apic-timer-irq.md)，帧分配/页表映射见 [ADR-0006](adr/0006-m1-frame-allocator-and-paging.md)，内核堆/按需分页见 [ADR-0007](adr/0007-m1-kernel-heap-and-demand-paging.md)，IOAPIC/外部 IRQ 与 MMIO 映射见 [ADR-0008](adr/0008-m1-ioapic-external-irq.md)，性能基准设施见 [ADR-0009](adr/0009-m1-benchmark-harness.md)，M2 的 SMP 启动与 per-CPU 见 [ADR-0010](adr/0010-m2-smp-percpu.md)。
+状态：v1 草案。依赖图是强制的；模块内部设计随里程碑和 ADR 演进。M0 的启动链、镜像布局和 QEMU smoke 见 [ADR-0002](adr/0002-m0-boot-chain.md)；M1 的 IDT/致命异常入口见 [ADR-0003](adr/0003-m1-fatal-exception-entry.md)，GDT/TSS/IST 见 [ADR-0004](adr/0004-m1-gdt-tss-ist.md)，x2APIC timer/IRQ 见 [ADR-0005](adr/0005-m1-apic-timer-irq.md)，帧分配/页表映射见 [ADR-0006](adr/0006-m1-frame-allocator-and-paging.md)，内核堆/按需分页见 [ADR-0007](adr/0007-m1-kernel-heap-and-demand-paging.md)，IOAPIC/外部 IRQ 与 MMIO 映射见 [ADR-0008](adr/0008-m1-ioapic-external-irq.md)，性能基准设施见 [ADR-0009](adr/0009-m1-benchmark-harness.md)，M2 的 SMP 启动与 per-CPU 见 [ADR-0010](adr/0010-m2-smp-percpu.md)，自旋锁与分配器加锁见 [ADR-0011](adr/0011-m2-spinlocks-allocator.md)。
 
 ## 1. 形态
 
@@ -77,6 +77,7 @@ deps/               smoke 下载的 Limine 等缓存（gitignored）
 ## 5. 关键约束
 
 - **SMP-first**：per-CPU 数据、显式锁、无 BKL。单核只是测试配置。
+- **锁序**（M2 起）：`paging → frame`、`heap → frame`；`paging` 与 `heap` 不嵌套；禁止反向。自旋锁获取一律保存并关闭本地中断，释放时恢复。详见 ADR-0011。
 - **接口所有权**：`interface.zig` 是模块唯一的公开面；内部类型不跨模块暴露。需要跨模块传递的不透明句柄用 `object` 的句柄，而不是裸指针。
 - **分配**：所有分配显式传入 allocator；模块不持有隐藏的全局堆。`kernel` 在启动时创建内核堆并注入需要的子系统。
 - **错误**：模块间接口使用 error union；panic 只用于不变量破坏。
