@@ -4,6 +4,7 @@ const serial = @import("serial.zig");
 const limine = @import("limine.zig");
 const backtrace = @import("backtrace.zig");
 const exceptions = @import("exceptions.zig");
+const extirq = @import("extirq.zig");
 const gdt = @import("gdt.zig");
 const memory = @import("memory.zig");
 const timer = @import("timer.zig");
@@ -33,6 +34,10 @@ pub fn initTimer() void {
 
 pub fn runMemorySmoke() bool {
     return memory.run();
+}
+
+pub fn runExternalSmoke() bool {
+    return extirq.run();
 }
 
 pub fn halt() noreturn {

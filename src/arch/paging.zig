@@ -5,7 +5,10 @@ const heap = @import("heap.zig");
 
 pub const flags_present: u64 = 1 << 0;
 pub const flags_rw: u64 = 1 << 1;
+pub const flags_uc: u64 = 1 << 4; // PCD: MMIO must not be cached
 pub const flags_nx: u64 = 1 << 63;
+
+pub const mmio_window: u64 = 0xffff_c000_0000_0000;
 
 const phys_mask: u64 = 0x000F_FFFF_FFFF_F000;
 
@@ -54,6 +57,17 @@ pub fn mapPage(virt: u64, phys: u64, flags: u64) bool {
         : [addr] "r" (virt),
         : .{ .memory = true });
     return true;
+}
+
+/// Maps the 4 KiB page containing `phys` into the MMIO window (uncached, NX)
+/// and returns its kernel virtual address. Idempotent.
+pub fn mapMmioPage(phys: u64) ?u64 {
+    const page = phys & ~@as(u64, 0xfff);
+    const virt = mmio_window + page;
+    if (translate(virt) == null) {
+        if (!mapPage(virt, page, flags_rw | flags_uc | flags_nx)) return null;
+    }
+    return mmio_window + phys;
 }
 
 pub fn translate(virt: u64) ?u64 {

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Boot the M0 kernel under OVMF with Limine, then boot the panic-smoke variant.
-# Exits non-zero unless both boots produce the expected serial markers and
-# QEMU exit codes.
+# Boot the kernel smoke variants under OVMF with Limine. Exits non-zero unless
+# every boot produces the expected serial markers and QEMU exit codes.
 
 set -euo pipefail
 
@@ -20,6 +19,7 @@ EXCEPTION_KERNEL="$ROOT/zig-out/bin/kernel-exception.elf"
 NMI_KERNEL="$ROOT/zig-out/bin/kernel-nmi.elf"
 TIMER_KERNEL="$ROOT/zig-out/bin/kernel-timer.elf"
 MEM_KERNEL="$ROOT/zig-out/bin/kernel-mem.elf"
+IRQ_KERNEL="$ROOT/zig-out/bin/kernel-irq.elf"
 BOOT_CONF="$ROOT/boot/limine.conf"
 ESP="$ROOT/zig-out/esp"
 ACCEL="${QEMU_ACCEL:-tcg}"
@@ -46,6 +46,10 @@ if [[ ! -f "$TIMER_KERNEL" ]]; then
 fi
 if [[ ! -f "$MEM_KERNEL" ]]; then
     echo "qemu-smoke: missing $MEM_KERNEL; run 'zig build kernel-mem'" >&2
+    exit 2
+fi
+if [[ ! -f "$IRQ_KERNEL" ]]; then
+    echo "qemu-smoke: missing $IRQ_KERNEL; run 'zig build kernel-irq'" >&2
     exit 2
 fi
 
@@ -174,6 +178,7 @@ run_boot "$EXCEPTION_KERNEL" 37 "EXCEPTION 3: breakpoint" exception
 run_boot "$NMI_KERNEL" 39 "EXCEPTION 2: non-maskable interrupt" nmi
 run_boot "$TIMER_KERNEL" 41 "TIMER OK" timer
 run_boot "$MEM_KERNEL" 45 "MEM OK" mem
+run_boot "$IRQ_KERNEL" 49 "IRQ OK" irq
 
 PANIC_LOG="$ROOT/zig-out/serial-panic.log"
 if ! grep -a -q "BACKTRACE:" "$PANIC_LOG" || ! grep -a -q "  #0 " "$PANIC_LOG"; then
@@ -200,3 +205,12 @@ if ! grep -a -q "rip:" "$NMI_LOG" ||
     exit 1
 fi
 echo "qemu-smoke: NMI IST OK"
+
+IRQ_LOG="$ROOT/zig-out/serial-irq.log"
+if ! grep -a -q "EXT: ioapic base" "$IRQ_LOG" ||
+   ! grep -a -q "EXT: gsi 8 -> vector 48" "$IRQ_LOG"; then
+    echo "qemu-smoke: irq serial output missing the IOAPIC setup evidence" >&2
+    tail -n 120 "$IRQ_LOG" 2>/dev/null || true
+    exit 1
+fi
+echo "qemu-smoke: IOAPIC route OK"

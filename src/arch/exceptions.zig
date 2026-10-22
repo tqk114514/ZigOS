@@ -1,7 +1,9 @@
-//! IDT and fatal exception entry. The IDT is populated once at boot and then
-//! only read by software; hardware reads it via lidt.
+//! IDT, fatal exception entry, and the returnable-IRQ dispatch. The IDT is
+//! populated once at boot and then only read by software; hardware reads it
+//! via lidt.
 
 const format = @import("../lib/interface.zig").format;
+const extirq = @import("extirq.zig");
 const gdt = @import("gdt.zig");
 const paging = @import("paging.zig");
 const port = @import("port.zig");
@@ -35,6 +37,7 @@ const ExceptionFrame = extern struct {
 extern const isr_stub_table: [isr_count]u64;
 extern const irq_stub_table: [irq_count]u64;
 extern fn pf_stub() callconv(.c) void;
+extern fn irq_ext() callconv(.c) void;
 
 var idt: [idt_entries]IdtEntry align(16) = undefined;
 var idtr: [10]u8 align(1) = undefined;
@@ -60,6 +63,8 @@ pub fn init() void {
     }
     // Vector 14 uses the returnable page-fault stub instead of the fatal one.
     idt[14] = makeEntry(@intCast(@intFromPtr(&pf_stub)), cs, 0);
+    // The external IRQ stub sits outside the 16 IRQ-stub vectors.
+    idt[extirq.vector] = makeEntry(@intCast(@intFromPtr(&irq_ext)), cs, 0);
 
     // lidt consumes a packed 10-byte descriptor (u16 limit, u64 base). Build it
     // as bytes so the inline asm memory operand cannot pick up struct padding.
@@ -84,8 +89,12 @@ pub fn init() void {
         : .{ .memory = true });
 }
 
-export fn irqHandler() callconv(.c) void {
-    timer.handleIrq();
+export fn irqHandler(vector: u64) callconv(.c) void {
+    switch (vector) {
+        32 => timer.handleIrq(),
+        extirq.vector => extirq.handleIrq(),
+        else => {},
+    }
 }
 
 export fn pageFaultHandler(frame: *const ExceptionFrame) callconv(.c) bool {

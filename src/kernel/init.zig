@@ -37,6 +37,17 @@ pub fn main() noreturn {
         arch.halt();
     }
 
+    if (config.irq_smoke) {
+        if (!arch.runExternalSmoke()) {
+            console.write("IRQ FAIL\n");
+            arch.qemuExit(0x19); // 51
+            arch.halt();
+        }
+        while (true) {
+            asm volatile ("hlt");
+        }
+    }
+
     if (config.nmi_smoke) {
         asm volatile ("int $2");
     }

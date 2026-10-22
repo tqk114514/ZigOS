@@ -25,6 +25,13 @@ IRQ 13
 IRQ 14
 IRQ 15
 
+# External IRQ stub (see extirq.zig); the vector is outside the PIC range.
+.global irq_ext
+irq_ext:
+    pushq $0
+    pushq $48
+    jmp irq_common
+
 irq_common:
     pushq %rax
     pushq %rcx
@@ -38,6 +45,8 @@ irq_common:
     pushq %rbx
     movq %rsp, %rbx
     andq $-16, %rsp
+    # The vector slot sits above the 10 saved registers.
+    movq 80(%rbx), %rdi
     call irqHandler
     movq %rbx, %rsp
     popq %rbx

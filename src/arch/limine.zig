@@ -1,4 +1,4 @@
-//! Limine requests: base revision 6, HHDM, and the physical memory map.
+//! Limine requests: base revision 6, HHDM, the physical memory map, and RSDP.
 
 const base_magic: u64 = 0xf9562b2d5c95a6c8;
 const base_magic2: u64 = 0x6a7b384944536bdc;
@@ -59,8 +59,25 @@ const MemmapRequest = extern struct {
     response: ?*const MemmapResponse = null,
 };
 
+pub const RsdpResponse = extern struct {
+    revision: u64,
+    address: ?*anyopaque,
+};
+
+const RsdpRequest = extern struct {
+    id: [4]u64 = .{
+        common_magic0,
+        common_magic1,
+        0xc5e77b6b397e7b43,
+        0x27637845accdcf3c,
+    },
+    revision: u64 = 0,
+    response: ?*const RsdpResponse = null,
+};
+
 export var limine_hhdm_request: HhdmRequest linksection(".limine_requests") = .{};
 export var limine_memmap_request: MemmapRequest linksection(".limine_requests") = .{};
+export var limine_rsdp_request: RsdpRequest linksection(".limine_requests") = .{};
 
 export var limine_requests_end: [2]u64 linksection(".limine_requests_end") = .{
     0xadc0e0531bb10d03,
@@ -82,4 +99,11 @@ pub fn hhdmOffset() ?u64 {
 
 pub fn memmap() ?*const MemmapResponse {
     return limine_memmap_request.response;
+}
+
+pub fn rsdp() ?u64 {
+    const response = limine_rsdp_request.response orelse return null;
+    const address = response.address orelse return null;
+    // At base revision >= 4 the RSDP address is HHDM-mapped, not physical.
+    return @intFromPtr(address);
 }
