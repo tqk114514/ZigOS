@@ -4,6 +4,7 @@
 //! function of the executed work. See docs/adr/0009.
 
 const format = @import("../lib/interface.zig").format;
+const cpu = @import("cpu.zig");
 const frame = @import("frame.zig");
 const heap = @import("heap.zig");
 const limine = @import("limine.zig");
@@ -33,7 +34,7 @@ pub fn run() bool {
 
 /// Frame allocator steady state: take a batch, give it back.
 fn frameChurn() bool {
-    const t0 = rdtsc();
+    const t0 = cpu.rdtsc();
     var iterations: u64 = 0;
     while (iterations < frame_iterations) : (iterations += 1) {
         for (&frame_scratch) |*slot| {
@@ -41,7 +42,7 @@ fn frameChurn() bool {
         }
         for (frame_scratch) |phys| frame.freeFrame(phys);
     }
-    print("frame_churn", rdtsc() - t0, frame_iterations * frame_batch);
+    print("frame_churn", cpu.rdtsc() - t0, frame_iterations * frame_batch);
     return true;
 }
 
@@ -57,14 +58,14 @@ fn heapChurn() bool {
         kh.free(block);
     }
 
-    const t0 = rdtsc();
+    const t0 = cpu.rdtsc();
     var iterations: u64 = 0;
     while (iterations < heap_iterations) : (iterations += 1) {
         const block = kh.alloc(heap_block) orelse return false;
         block[0] = @truncate(iterations);
         kh.free(block);
     }
-    print("heap_churn", rdtsc() - t0, heap_iterations);
+    print("heap_churn", cpu.rdtsc() - t0, heap_iterations);
     return true;
 }
 
@@ -74,12 +75,12 @@ fn demandFault() bool {
     const bytes = kh.alloc(fault_pages * 4096) orelse return false;
 
     const before = paging.demandFaults();
-    const t0 = rdtsc();
+    const t0 = cpu.rdtsc();
     var i: usize = 0;
     while (i < fault_pages) : (i += 1) {
         bytes[i * 4096] = @truncate(i);
     }
-    const cycles = rdtsc() - t0;
+    const cycles = cpu.rdtsc() - t0;
 
     const faults = paging.demandFaults() - before;
     if (faults == 0) return false;
@@ -96,17 +97,4 @@ fn print(name: []const u8, cycles: u64, ops: u64) void {
     console.write(" ");
     format.writeDec(console, ops);
     console.write("\n");
-}
-
-fn rdtsc() u64 {
-    var low: u32 = undefined;
-    var high: u32 = undefined;
-    // SAFETY: rdtsc is unprivileged; lfence keeps it from being speculated
-    // ahead of the work that was just measured.
-    asm volatile ("lfence\n\trdtsc"
-        : [low] "={eax}" (low),
-          [high] "={edx}" (high),
-        :
-        : .{ .memory = true });
-    return (@as(u64, high) << 32) | low;
 }
