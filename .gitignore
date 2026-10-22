@@ -1,0 +1,7 @@
+.zig-cache/
+zig-cache/
+zig-out/
+*.iso
+*.img
+*.qcow2
+.DS_Store

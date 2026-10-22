@@ -1,0 +1,14 @@
+# <type>(<scope>)!?: <summary>
+#
+# Why:
+# - ...
+#
+# Verification:
+# - ...
+#
+# Types: feat fix test refactor perf docs build ci chore revert
+# Code scopes: lib hal arch mm object sched fs net drivers kernel tools
+# Other scopes: docs(charter), docs(adr), build(zig), ci(actions), chore(repo)
+# Header <= 72 chars; English; imperative; no trailing period.
+# Breaking change: add ! after scope and a BREAKING CHANGE: footer.
+# Architecture/toolchain/performance-safety changes: add an ADR: footer.
