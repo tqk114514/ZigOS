@@ -2,6 +2,7 @@
 //! masked (FMASK) and no allocation; user pointers only cross via copyFromUser.
 
 const apic = @import("apic.zig");
+const cpu = @import("cpu.zig");
 const paging = @import("paging.zig");
 const serial = @import("serial.zig");
 const user = @import("user.zig");
@@ -59,6 +60,9 @@ pub fn runUser(rip: u64, user_rsp: u64) u64 {
     const previous = paging.activate(address_space.pml4);
     const status = enterUser(rip, user_rsp, &resume_rsp);
     _ = paging.activate(previous);
+    // enterUser runs with interrupts off; the kernel thread resumes with them
+    // back on (the syscall path left them masked by FMASK).
+    cpu.enableInterrupts();
     return status;
 }
 

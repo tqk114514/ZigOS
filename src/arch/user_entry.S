@@ -1,11 +1,12 @@
 .text
 
 # u64 enterUser(u64 rip, u64 user_rsp, usize *resume)
-# Saves the kernel callee-saved registers, records the resume stack pointer,
-# then iretq's into ring3 with interrupts disabled (the M2 user program is a
-# short, non-preemptible sequence).
+# Runs with interrupts disabled: the kernel must never execute after swapgs
+# with IF set (the GS base belongs to the user by then). The iret frame
+# restores IF for user mode.
 .global enterUser
 enterUser:
+    cli
     pushq %rbp
     pushq %rbx
     pushq %r12
@@ -16,7 +17,7 @@ enterUser:
     movq %rsi, %rax
     pushq $0x1b                # SS: user data | RPL3
     pushq %rax                 # user rsp
-    pushq $0x002               # RFLAGS: IF clear
+    pushq $0x002               # RFLAGS: user mode is preemptible
     pushq $0x23                # CS: user code | RPL3
     pushq %rdi                 # user rip
     xorl %eax, %eax
