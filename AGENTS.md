@@ -4,7 +4,7 @@
 
 ## 项目
 
-面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。M1 已完成（M0 启动、M1 内存/中断、内存压力与性能基准门禁全部落地）。M2 进行中：SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI 已落地；睡眠/唤醒、对象/句柄、syscall、用户态未开始。
+面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。M1 已完成（M0 启动、M1 内存/中断、内存压力与性能基准门禁全部落地）。M2 进行中：SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列已落地；对象/句柄、syscall、用户态未开始。
 
 v1 = M0 启动 → M1 内存/中断 → M2 SMP/调度/syscall/用户态 → M3 VFS/virtio-blk/shell。网络、可写文件系统、真实硬件、多架构在 v1 之后。v1 明确不做 POSIX/GUI/USB/热加载模块/微内核 IPC；范围变更必须走 ADR。
 
@@ -68,7 +68,7 @@ zig build bench
 - [docs/CHARTER.md](docs/CHARTER.md) — 宪法：定位、v1 范围、非目标、红线、修订程序。
 - [docs/ENGINEERING.md](docs/ENGINEERING.md) — Zig/OS 规则、测试、提交格式、评审清单。
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 模块职责、依赖 DAG、接口边界、启动路径。
-- [docs/adr/](docs/adr/) — 架构决策记录；[ADR-0001](docs/adr/0001-kernel-shape-and-v1-scope.md) 定形态，[ADR-0002](docs/adr/0002-m0-boot-chain.md) 定 M0 启动链，[ADR-0003](docs/adr/0003-m1-fatal-exception-entry.md) 定 M1 致命异常入口，[ADR-0004](docs/adr/0004-m1-gdt-tss-ist.md) 定 GDT/TSS/IST，[ADR-0005](docs/adr/0005-m1-apic-timer-irq.md) 定 x2APIC timer/IRQ，[ADR-0006](docs/adr/0006-m1-frame-allocator-and-paging.md) 定帧分配/页表映射，[ADR-0007](docs/adr/0007-m1-kernel-heap-and-demand-paging.md) 定内核堆/按需分页，[ADR-0008](docs/adr/0008-m1-ioapic-external-irq.md) 定 IOAPIC/外部 IRQ，[ADR-0009](docs/adr/0009-m1-benchmark-harness.md) 定基准设施，[ADR-0010](docs/adr/0010-m2-smp-percpu.md) 定 SMP 启动与 per-CPU，[ADR-0011](docs/adr/0011-m2-spinlocks-allocator.md) 定自旋锁与分配器加锁，[ADR-0012](docs/adr/0012-m2-scheduler-core.md) 定抢占调度器核心与 IPI。
+- [docs/adr/](docs/adr/) — 架构决策记录；[ADR-0001](docs/adr/0001-kernel-shape-and-v1-scope.md) 定形态，[ADR-0002](docs/adr/0002-m0-boot-chain.md) 定 M0 启动链，[ADR-0003](docs/adr/0003-m1-fatal-exception-entry.md) 定 M1 致命异常入口，[ADR-0004](docs/adr/0004-m1-gdt-tss-ist.md) 定 GDT/TSS/IST，[ADR-0005](docs/adr/0005-m1-apic-timer-irq.md) 定 x2APIC timer/IRQ，[ADR-0006](docs/adr/0006-m1-frame-allocator-and-paging.md) 定帧分配/页表映射，[ADR-0007](docs/adr/0007-m1-kernel-heap-and-demand-paging.md) 定内核堆/按需分页，[ADR-0008](docs/adr/0008-m1-ioapic-external-irq.md) 定 IOAPIC/外部 IRQ，[ADR-0009](docs/adr/0009-m1-benchmark-harness.md) 定基准设施，[ADR-0010](docs/adr/0010-m2-smp-percpu.md) 定 SMP 启动与 per-CPU，[ADR-0011](docs/adr/0011-m2-spinlocks-allocator.md) 定自旋锁与分配器加锁，[ADR-0012](docs/adr/0012-m2-scheduler-core.md) 定抢占调度器核心与 IPI，[ADR-0013](docs/adr/0013-m2-sleep-wake.md) 定睡眠/唤醒与等待队列。
 - [boot/limine.conf](boot/limine.conf) — Limine 启动配置（M0）。
 - [tests/qemu-env.sh](tests/qemu-env.sh) — QEMU/OVMF/Limine 的公共测试环境。
 - [tests/qemu-smoke.sh](tests/qemu-smoke.sh) — OVMF + vvfat + Limine 的八变体 smoke。

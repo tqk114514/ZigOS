@@ -2,7 +2,7 @@
 
 一个用 Zig 编写的模块化宏内核，第一目标平台是 QEMU/virt 上的 x86_64。
 
-当前状态：M2 进行中。M1 已完成（含内存压力测试与性能基准设施）；SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI 已落地；睡眠/唤醒、对象/句柄、syscall、用户态未开始。
+当前状态：M2 进行中。M1 已完成（含内存压力测试与性能基准设施）；SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列已落地；对象/句柄、syscall、用户态未开始。
 
 ## 文档
 
@@ -23,6 +23,7 @@
 - [ADR-0010](docs/adr/0010-m2-smp-percpu.md) — SMP 启动与 per-CPU 基础设施
 - [ADR-0011](docs/adr/0011-m2-spinlocks-allocator.md) — 自旋锁与分配器加锁
 - [ADR-0012](docs/adr/0012-m2-scheduler-core.md) — 抢占式调度器核心与 IPI
+- [ADR-0013](docs/adr/0013-m2-sleep-wake.md) — 睡眠/唤醒与等待队列
 
 ## 工具链
 
