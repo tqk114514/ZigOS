@@ -17,7 +17,7 @@ enterUser:
     movq %rsi, %rax
     pushq $0x1b                # SS: user data | RPL3
     pushq %rax                 # user rsp
-    pushq $0x002               # RFLAGS: user mode is preemptible
+    pushq $0x202               # RFLAGS: user mode is preemptible: user mode is preemptible
     pushq $0x23                # CS: user code | RPL3
     pushq %rdi                 # user rip
     xorl %eax, %eax
@@ -37,7 +37,8 @@ enterUser:
 # Returns to the kernel caller of enterUser with the status in rax.
 .global leaveUserKernel
 leaveUserKernel:
-    swapgs
+    # The syscall entry already swapped to the kernel GS base; swapping again
+    # here would leave the kernel running with the user GS.
     movq %rdi, %rsp
     popq %r15
     popq %r14

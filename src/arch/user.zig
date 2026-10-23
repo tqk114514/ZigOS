@@ -140,13 +140,71 @@ pub fn runSmoke() bool {
         if (code_status != 0) return false;
     } else return false;
     console.write("USER: ring3 ok\n");
+
+    const spin_phys = mapUser(space, user_code2, false, true) orelse return false;
+    const spin_code: [*]u8 = @ptrFromInt(paging.hhdmOffset() + spin_phys);
+    const spin_program = comptime buildSpinProgram();
+    @memcpy(spin_code[0..spin_program.len], &spin_program);
+    const spin_status = syscall.runUser(user_code2, user_stack + 0x1000 - 16);
+    if (spin_status != 0) return false;
+    if (syscall.exitedWith()) |code_status| {
+        if (code_status != 0) return false;
+    } else return false;
+    console.write("USER: spin ok\n");
     return true;
 }
 
 const user_stack: u64 = user_base + 0x1000;
 const user_code: u64 = user_base + 0x3000;
+const user_code2: u64 = user_base + 0x4000;
 const program_len: usize = 46;
 const msg_offset: usize = 38;
+
+const spin_program_len: usize = 57;
+const spin_msg_offset: usize = 47;
+const spin_iterations: u32 = 60_000_000;
+
+fn buildSpinProgram() [spin_program_len]u8 {
+    var out: [spin_program_len]u8 = undefined;
+    for (&out) |*b| b.* = 0;
+    out[0] = 0xb9; // mov $N, %ecx
+    var n = spin_iterations;
+    var i: usize = 0;
+    while (i < 4) : (i += 1) {
+        out[1 + i] = @truncate(n);
+        n >>= 8;
+    }
+    out[5] = 0xff;
+    out[6] = 0xc9; // dec %ecx
+    out[7] = 0x75;
+    out[8] = 0xfc; // jnz -4
+    out[9] = 0xb8;
+    out[10] = 1; // mov $1, %eax
+    out[14] = 0xbf;
+    out[15] = 1; // mov $1, %edi
+    out[19] = 0x48;
+    out[20] = 0xbe; // movabs $msg, %rsi
+    var addr = user_code2 + spin_msg_offset;
+    i = 0;
+    while (i < 8) : (i += 1) {
+        out[21 + i] = @truncate(addr);
+        addr >>= 8;
+    }
+    out[29] = 0xba;
+    out[30] = 10; // mov $10, %edx
+    out[34] = 0x0f;
+    out[35] = 0x05; // syscall write
+    out[36] = 0xb8; // mov $0, %eax
+    out[41] = 0x31;
+    out[42] = 0xff; // xor %edi, %edi
+    out[43] = 0x0f;
+    out[44] = 0x05; // syscall exit
+    out[45] = 0xeb;
+    out[46] = 0xfe; // jmp .
+    const msg = "USER SPIN\n";
+    for (msg, 0..) |c, j| out[spin_msg_offset + j] = c;
+    return out;
+}
 
 fn buildProgram() [program_len]u8 {
     var out: [program_len]u8 = undefined;

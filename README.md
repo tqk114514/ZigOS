@@ -2,7 +2,7 @@
 
 一个用 Zig 编写的模块化宏内核，第一目标平台是 QEMU/virt 上的 x86_64。
 
-当前状态：M2 进行中。M1 已完成（含内存压力测试与性能基准设施）；SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列、对象/句柄核心、用户地址空间与 copy_from_user/copy_to_user 已落地；syscall 入口与最小 ring3 用户程序（write/exit、CR3 切换）已落地；用户态定时抢占待做。
+当前状态：M2 进行中。M1 已完成（含内存压力测试与性能基准设施）；SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列、对象/句柄核心、用户地址空间与 copy_from_user/copy_to_user、syscall 入口、ring3 用户程序与用户态定时抢占已落地。M2 收尾遗留（ADR-0015 记录）：TLB shootdown 与多进程推迟到下一增量。
 
 ## 文档
 

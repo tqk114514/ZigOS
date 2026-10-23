@@ -83,7 +83,21 @@ pub fn main() noreturn {
     }
 
     if (config.user_smoke) {
-        if (arch.runUserSmoke()) {
+        arch.setVectorHandler(arch.timer_vector, sched.onTimer);
+        arch.setVectorHandler(arch.ipi_vector, sched.onIpi);
+        arch.setPreemptHook(sched.preempt);
+        const started = sched.startKernelScheduler();
+        const ticks_before = sched.ticksNow();
+        const switches_before = sched.switchesNow();
+        const ok = started and arch.runUserSmoke();
+        const preemptions = sched.ticksNow() - ticks_before;
+        const switches = sched.switchesNow() - switches_before;
+        if (ok and preemptions >= 2 and switches >= 2) {
+            console.write("USER: preempt ticks ");
+            format.writeDec(console, preemptions);
+            console.write(" switches ");
+            format.writeDec(console, switches);
+            console.write(" preempted\n");
             console.write("USER OK\n");
             arch.qemuExit(0x22); // 69
         } else {

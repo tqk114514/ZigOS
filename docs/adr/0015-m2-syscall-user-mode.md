@@ -35,5 +35,5 @@
 
 - (a) write 输出、ring3 取指/返回、CR3 切换：(d) exit 回内核：已落地并经 QEMU smoke 验证（`kernel-user` 退出 69）。
 - (b) copy_from_user 拒绝非法指针：已落地并验证。
-- (c) 用户态定时抢占：**未完成**。已实现 IRQ/PF/致命存根的条件 swapgs 与 `enterUser` 的关中断窗口修复；把用户程序改为长跑并接入调度器后，在抢占路径上出现内核态致命 #PF（RIP 位于 `percpu.current` 的 `%gs:0`，CR2=0），尚未定位。当前用户模式以 IF=0 运行，smoke 只覆盖非抢占的 ring3 路径。
+- (c) 用户态定时抢占：**已完成**。`kernel-user` 启动调度器后让一段长跑用户程序（60M 次循环）在 ring3 被定时器抢占；smoke 断言 tick 与上下文切换都增长（实测 18/18）且程序正常完成。期间定位并修复两个真实缺陷：(1) `enterUser` 在 `swapgs` 与 `iretq` 之间允许中断，内核会带着用户 GS 执行——进入前改为 `cli`，由 iret 帧恢复用户 IF；(2) `leaveUserKernel` 多做了一次 `swapgs`（syscall 入口已切换），导致退出后内核持续运行在用户 GS 状态——删除该指令。
 - TLB shootdown：未实现；当前单用户线程、映射在进入用户态前建立，paging 锁保证一致性。多进程/多用户线程增量落地时必须补齐。

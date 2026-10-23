@@ -147,6 +147,31 @@ fn nullArray(comptime n: usize) [n]?*Thread {
     return out;
 }
 
+/// Starts scheduling on the current CPU with the boot context as current.
+pub fn startKernelScheduler() bool {
+    const cpu = arch.cpuIndex();
+    if (cpu >= arch.cpu_limit or !setupCpu(cpu)) return false;
+    const boot = &threads[0];
+    if (boot.entry == null) {
+        boot.entry = &idleLoop;
+        boot.cpu = cpu;
+        boot.id = 0;
+    }
+    queues[cpu].current = boot;
+    queues[cpu].ticks_left = quantum_ticks;
+    if (!arch.startLocalTimer()) return false;
+    arch.enableInterrupts();
+    return true;
+}
+
+pub fn ticksNow() u64 {
+    return @atomicLoad(u64, &ticks, .monotonic);
+}
+
+pub fn switchesNow() u64 {
+    return @atomicLoad(u64, &queues[arch.cpuIndex()].switches, .monotonic);
+}
+
 pub fn onTimer() callconv(.c) void {
     arch.eoi();
     _ = @atomicRmw(u64, &ticks, .Add, 1, .monotonic);
