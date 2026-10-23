@@ -2,5 +2,5 @@
 # Values are guest TSC cycles per operation; refresh deliberately in its own commit.
 # recorded with: QEMU emulator version 11.1.0 (v11.1.0-12130-ge470268ff4)
 frame_churn 13211.518
-heap_churn 8704.125
-demand_fault 36140.346
+heap_churn 11392.094
+demand_fault 36652.346
