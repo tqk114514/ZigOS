@@ -4,7 +4,7 @@
 
 ## 项目
 
-面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。M1 已完成（M0 启动、M1 内存/中断、内存压力与性能基准门禁全部落地）。M2 已完成：SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列、对象/句柄核心、用户地址空间与 copy_from_user/copy_to_user、syscall 入口、ring3 用户程序与用户态定时抢占已落地。收尾清理进行中：TLB shootdown 与双地址空间/跨核用户线程已落地（页重映射端到端验证）；每线程内核栈、栈 guard page、堆统计、syscall 句柄接入仍待；M3（VFS、initramfs、virtio-blk、用户态 shell）未开始。
+面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。M1 已完成（M0 启动、M1 内存/中断、内存压力与性能基准门禁全部落地）。M2 已完成：SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列、对象/句柄核心、用户地址空间与 copy_from_user/copy_to_user、syscall 入口、ring3 用户程序与用户态定时抢占已落地。收尾清理进行中：TLB shootdown、双地址空间/跨核用户线程、堆统计与 syscall 句柄接入已落地；每线程内核栈、栈 guard page、线程槽位回收仍待；M3（VFS、initramfs、virtio-blk、用户态 shell）未开始。
 
 v1 = M0 启动 → M1 内存/中断 → M2 SMP/调度/syscall/用户态 → M3 VFS/virtio-blk/shell。网络、可写文件系统、真实硬件、多架构在 v1 之后。v1 明确不做 POSIX/GUI/USB/热加载模块/微内核 IPC；范围变更必须走 ADR。
 
