@@ -1,6 +1,7 @@
 const arch = @import("../arch/interface.zig");
 const format = @import("../lib/interface.zig").format;
 const object = @import("../object/interface.zig");
+const syscall_dispatch = @import("syscall.zig");
 const sched = @import("../sched/interface.zig");
 const config = @import("config");
 
@@ -26,6 +27,7 @@ pub fn main() noreturn {
     arch.initGdt();
     arch.initIdt();
     arch.initSyscall();
+    syscall_dispatch.init();
     arch.initTlb();
 
     if (config.timer_smoke) {

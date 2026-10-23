@@ -35,6 +35,14 @@ extern fn syscallEntry() callconv(.c) void;
 extern fn enterUser(rip: u64, user_rsp: u64, resume_slot: *usize) callconv(.c) u64;
 extern fn leaveUserKernel(resume_slot: usize, status: u64) callconv(.c) noreturn;
 
+pub const Dispatch = *const fn (number: u64, a1: u64, a2: u64, a3: u64) u64;
+
+var dispatch_hook: ?Dispatch = null;
+
+pub fn setDispatch(handler: ?Dispatch) void {
+    dispatch_hook = handler;
+}
+
 var exit_status: u64 = 0;
 var exited: u32 = 0; // atomic
 var resume_rsp: usize = 0;
@@ -48,7 +56,7 @@ pub fn init() void {
     apic.wrmsr(fmask_msr, 0x700 | 0x40000); // TF|IF|DF|AC
 }
 
-fn currentSpace() ?user.AddressSpace {
+pub fn currentAddressSpace() ?user.AddressSpace {
     const pml4 = percpu.current().user_space;
     if (pml4 == 0) return null;
     return .{ .pml4 = pml4 };
@@ -88,25 +96,17 @@ pub fn resetExit() void {
 
 export fn syscallHandler(frame: *Frame) callconv(.c) u64 {
     switch (frame.number) {
-        number_write => return write(frame.a1, frame.a2, frame.a3),
+        number_write => {
+            const handler = dispatch_hook orelse return error_value;
+            return handler(number_write, frame.a1, frame.a2, frame.a3);
+        },
         number_yield => return 0, // preemption already covers it
         number_exit => exitUser(frame.a1),
         else => return error_value,
     }
 }
 
-fn write(handle: u64, ptr: u64, len: u64) u64 {
-    if (handle != 1) return error_value; // console handle
-    if (len > 4096) return error_value;
-    const address_space = currentSpace() orelse return error_value;
-
-    var buf: [64]u8 = undefined;
-    var done: u64 = 0;
-    while (done < len) {
-        const chunk: usize = @intCast(@min(len - done, 64));
-        if (!user.copyFromUser(address_space, buf[0..chunk], ptr + done)) return error_value;
-        serial.console.write(buf[0..chunk]);
-        done += chunk;
-    }
-    return 0;
+/// Copies from a user pointer of the given space (for the dispatch hook).
+pub fn copyFromUser(space: user.AddressSpace, dst: []u8, src: u64) bool {
+    return user.copyFromUser(space, dst, src);
 }

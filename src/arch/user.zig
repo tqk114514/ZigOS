@@ -2,6 +2,13 @@
 //! W^X; every user memory access goes through copyFromUser/copyToUser.
 
 const cpu = @import("cpu.zig");
+
+var console_handle: u64 = 1;
+
+/// Sets the handle value the embedded programs pass to write().
+pub fn setConsoleHandle(handle: u64) void {
+    console_handle = handle;
+}
 const frame = @import("frame.zig");
 const tlb = @import("tlb.zig");
 const limine = @import("limine.zig");
@@ -94,6 +101,7 @@ fn rangeOk(ptr: u64, len: usize) bool {
 
 pub fn runSmoke() bool {
     const console = serial.console;
+    if (console_handle > 0xff) return false;
     const hhdm = limine.hhdmOffset() orelse return false;
     const memmap = limine.memmap() orelse return false;
     frame.init(memmap);
@@ -132,7 +140,7 @@ pub fn runSmoke() bool {
     const stack_phys = mapUser(space, user_stack, true, false) orelse return false;
     _ = stack_phys;
     const code: [*]u8 = @ptrFromInt(paging.hhdmOffset() + code_phys);
-    const program = comptime buildProgram();
+    const program = buildProgram();
     @memcpy(code[0..program.len], &program);
 
     const status = syscall.runUser(space, user_code, user_stack + 0x1000 - 16);
@@ -144,7 +152,7 @@ pub fn runSmoke() bool {
 
     const spin_phys = mapUser(space, user_code2, false, true) orelse return false;
     const spin_code: [*]u8 = @ptrFromInt(paging.hhdmOffset() + spin_phys);
-    const spin_program = comptime buildSpinProgram();
+    const spin_program = buildSpinProgram();
     @memcpy(spin_code[0..spin_program.len], &spin_program);
     const spin_status = syscall.runUser(space, user_code2, user_stack + 0x1000 - 16);
     if (spin_status != 0) return false;
@@ -182,7 +190,7 @@ fn buildSpinProgram() [spin_program_len]u8 {
     out[9] = 0xb8;
     out[10] = 1; // mov $1, %eax
     out[14] = 0xbf;
-    out[15] = 1; // mov $1, %edi
+    out[15] = @truncate(console_handle); // mov $handle, %edi
     out[19] = 0x48;
     out[20] = 0xbe; // movabs $msg, %rsi
     var addr = user_code2 + spin_msg_offset;
@@ -213,7 +221,7 @@ fn buildProgram() [program_len]u8 {
     out[0] = 0xb8;
     out[1] = 1; // mov $1, %eax (write)
     out[5] = 0xbf;
-    out[6] = 1; // mov $1, %edi (console handle)
+    out[6] = @truncate(console_handle); // mov $handle, %edi
     out[10] = 0x48;
     out[11] = 0xbe; // movabs $msg, %rsi
     var addr = user_code + msg_offset;
@@ -253,6 +261,7 @@ var smp_exit_ok: u32 = 0; // atomic
 
 /// Prepares space B: stack, a test page holding 'A', and the polling program.
 pub fn prepareUserSmp() bool {
+    if (console_handle > 0xff) return false;
     const space = create() orelse return false;
     smp_space = space;
     if (mapUser(space, user_stack, true, false) == null) return false;
@@ -265,7 +274,7 @@ pub fn prepareUserSmp() bool {
     test_page[0] = 'A';
 
     const code: [*]u8 = @ptrFromInt(hhdm + code_phys);
-    const program = comptime buildSmpProgram();
+    const program = buildSmpProgram();
     @memcpy(code[0..program.len], &program);
     smp_ready = true;
     return true;
@@ -296,14 +305,12 @@ pub fn finishUserSmp() bool {
     const settle = cpu.rdtsc() + 50_000_000;
     while (cpu.rdtsc() < settle) cpu.pause();
 
-    serial.console.write("A2: stage remap\n");
     const old_pte = paging.pteIn(smp_space.pml4, space_b_test) orelse return false;
     const new_phys = frame.allocFrame() orelse return false;
     const page: [*]u8 = @ptrFromInt(paging.hhdmOffset() + new_phys);
     @memset(page[0..4096], 0);
     page[0] = 'B';
     if (!paging.mapPageIn(smp_space.pml4, space_b_test, new_phys, paging.flags_user | paging.flags_rw | paging.flags_nx)) return false;
-    serial.console.write("A2: stage shootdown\n");
     if (!tlb.shootdown()) {
         serial.console.write("A2: shootdown failed\n");
         return false;
@@ -341,7 +348,7 @@ fn buildSmpProgram() [smp_program_len]u8 {
     out[17] = 0xb8;
     out[18] = 1; // mov $1, %eax
     out[22] = 0xbf;
-    out[23] = 1; // mov $1, %edi
+    out[23] = @truncate(console_handle); // mov $handle, %edi
     out[27] = 0x48;
     out[28] = 0xbe; // movabs $msg, %rsi
     var msg_addr = space_b_code + smp_msg_offset;
