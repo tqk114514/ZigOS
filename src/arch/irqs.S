@@ -39,6 +39,13 @@ irq_ipi:
     pushq $50
     jmp irq_common
 
+# TLB shootdown IPI stub (see tlb.zig); registered at boot.
+.global irq_tlb
+irq_tlb:
+    pushq $0
+    pushq $51
+    jmp irq_common
+
 irq_common:
     # Interrupts from ring3 carry an empty GS base; swap to the per-CPU block.
     testb $3, 24(%rsp)

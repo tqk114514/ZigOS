@@ -15,6 +15,7 @@ const gdt = @import("gdt.zig");
 const memory = @import("memory.zig");
 const smp = @import("smp.zig");
 const timer = @import("timer.zig");
+const tlb = @import("tlb.zig");
 const syscall = @import("syscall.zig");
 const user = @import("user.zig");
 
@@ -67,6 +68,14 @@ pub fn initSyscall() void {
 
 pub fn setUserSpace(address_space: user.AddressSpace) void {
     syscall.setAddressSpace(address_space);
+}
+
+pub fn initTlb() void {
+    tlb.init();
+}
+
+pub fn tlbProbe() bool {
+    return tlb.probe();
 }
 
 pub fn runUserSmoke() bool {

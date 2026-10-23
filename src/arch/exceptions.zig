@@ -39,9 +39,11 @@ extern const irq_stub_table: [irq_count]u64;
 extern fn pf_stub() callconv(.c) void;
 extern fn irq_ext() callconv(.c) void;
 extern fn irq_ipi() callconv(.c) void;
+extern fn irq_tlb() callconv(.c) void;
 
 pub const timer_vector: u64 = 32;
 pub const ipi_vector: u64 = 50;
+pub const tlb_vector: u64 = 51;
 
 pub const VectorHandler = *const fn () callconv(.c) void;
 
@@ -91,6 +93,7 @@ pub fn init() void {
     // The external IRQ stub sits outside the 16 IRQ-stub vectors.
     idt[extirq.vector] = makeEntry(@intCast(@intFromPtr(&irq_ext)), cs, 0);
     idt[ipi_vector] = makeEntry(@intCast(@intFromPtr(&irq_ipi)), cs, 0);
+    idt[tlb_vector] = makeEntry(@intCast(@intFromPtr(&irq_tlb)), cs, 0);
 
     // lidt consumes a packed 10-byte descriptor (u16 limit, u64 base). Build it
     // as bytes so the inline asm memory operand cannot pick up struct padding.

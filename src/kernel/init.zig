@@ -26,6 +26,7 @@ pub fn main() noreturn {
     arch.initGdt();
     arch.initIdt();
     arch.initSyscall();
+    arch.initTlb();
 
     if (config.timer_smoke) {
         arch.initTimer();
@@ -72,7 +73,7 @@ pub fn main() noreturn {
         arch.setVectorHandler(arch.ipi_vector, sched.onIpi);
         arch.setPreemptHook(sched.preempt);
         arch.setApHandler(sched.apEntry);
-        if (arch.startAps() and sched.runSmoke()) {
+        if (arch.startAps() and sched.runSmoke() and arch.tlbProbe()) {
             console.write("SCHED OK\n");
             arch.qemuExit(0x1e); // 61
         } else {
