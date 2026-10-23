@@ -1,5 +1,6 @@
 const arch = @import("../arch/interface.zig");
 const format = @import("../lib/interface.zig").format;
+const object = @import("../object/interface.zig");
 const sched = @import("../sched/interface.zig");
 const config = @import("config");
 
@@ -76,6 +77,17 @@ pub fn main() noreturn {
         } else {
             console.write("SCHED FAIL\n");
             arch.qemuExit(0x1f); // 63
+        }
+        arch.halt();
+    }
+
+    if (config.object_smoke) {
+        if (object.runSmoke()) {
+            console.write("OBJECT OK\n");
+            arch.qemuExit(0x20); // 65
+        } else {
+            console.write("OBJECT FAIL\n");
+            arch.qemuExit(0x21); // 67
         }
         arch.halt();
     }
