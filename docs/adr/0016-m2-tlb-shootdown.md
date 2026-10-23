@@ -12,7 +12,7 @@
 
 1. **shootdown 协议**：全局一把 shootdown 锁 + 单调 generation。发起方在锁内递增 generation，向所有其他在线 CPU 发送 vector 51 IPI；目标在 IPI 处理器里重载 CR3（冲刷非全局 TLB）并以 release 语义记录已见 generation；发起方以 rdtsc 截止时间等待全部确认，超时返回失败（不 panic：调用方把映射失败向上传递）。
 2. **触发点**：地址空间的映射变更（后续的 `unmapUser`/重映射）在本地 `invlpg` 之后调用 `tlb.shootdown()`。A1 阶段先验证机制本身：`kernel-sched` 变体在 AP 调度器运行（idle，IF=1）时做一次 shootdown，断言全部在线 CPU 应答。
-3. **多进程（A2，下一增量）**：地址空间成为一等对象（pml4 + 句柄表 + 用户页所有者），每 CPU 记录当前活动空间以只向相关 CPU 发 IPI；两个用户线程可在不同 CPU 上并发运行各自的程序；验收用一个“页内容从 A 重映射到 B”的端到端测试：若 TLB 陈旧，用户会一直读到 A 并超时。
+3. **多进程（A2，已完成 2026-10-23）**：`kernel-user` 在 4 核下创建第二个地址空间（space B），把一段“轮询测试页、读到 'B' 即写出并退出”的用户程序投递到 CPU 1 的调度器；BSP 先等它启动，再把测试页重映射为 'B' 并 shootdown。实测用户线程读到新内容（`B DONE`、`USER: space B remapped ok`），旧帧被回收。期间修掉一个真实缺陷：`shootdown()` 等待所有 CPU 时未把自己标为已确认（只有 probe 做了），真实路径必然超时。：地址空间成为一等对象（pml4 + 句柄表 + 用户页所有者），每 CPU 记录当前活动空间以只向相关 CPU 发 IPI；两个用户线程可在不同 CPU 上并发运行各自的程序；验收用一个“页内容从 A 重映射到 B”的端到端测试：若 TLB 陈旧，用户会一直读到 A 并超时。
 4. **配套遗留**（独立增量）：每线程内核栈与内核栈 guard page（ADR-0017）、堆统计/配额接口、线程槽位回收、syscall 接入真实句柄表。
 
 ## 后果
