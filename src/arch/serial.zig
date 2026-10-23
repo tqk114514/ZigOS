@@ -2,9 +2,12 @@
 
 const hal = @import("../hal/interface.zig");
 const port = @import("port.zig");
+const spinlock = @import("spinlock.zig");
 
 const com1: u16 = 0x3f8;
 const max_spin: usize = 1_000_000;
+
+var lock: spinlock.Lock align(64) = .{};
 
 pub const console = hal.Console{ .write_fn = write };
 
@@ -19,6 +22,8 @@ pub fn init() void {
 }
 
 pub fn write(bytes: []const u8) void {
+    const irq = lock.acquire();
+    defer lock.release(irq);
     for (bytes) |byte| writeByte(byte);
 }
 

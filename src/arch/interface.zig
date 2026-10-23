@@ -66,16 +66,24 @@ pub fn initSyscall() void {
     syscall.init();
 }
 
-pub fn setUserSpace(address_space: user.AddressSpace) void {
-    syscall.setAddressSpace(address_space);
-}
-
 pub fn initTlb() void {
     tlb.init();
 }
 
 pub fn tlbProbe() bool {
     return tlb.probe();
+}
+
+pub fn prepareUserSmp() bool {
+    return user.prepareUserSmp();
+}
+
+pub fn runUserSmpThread() bool {
+    return user.runUserSmpThread();
+}
+
+pub fn finishUserSmp() bool {
+    return user.finishUserSmp();
 }
 
 pub fn runUserSmoke() bool {

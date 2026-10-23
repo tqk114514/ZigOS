@@ -4,6 +4,7 @@
 const apic = @import("apic.zig");
 const cpu = @import("cpu.zig");
 const paging = @import("paging.zig");
+const percpu = @import("percpu.zig");
 const serial = @import("serial.zig");
 const user = @import("user.zig");
 
@@ -34,8 +35,6 @@ extern fn syscallEntry() callconv(.c) void;
 extern fn enterUser(rip: u64, user_rsp: u64, resume_slot: *usize) callconv(.c) u64;
 extern fn leaveUserKernel(resume_slot: usize, status: u64) callconv(.c) noreturn;
 
-// M2: one user thread at a time; the owner sets the space before entering.
-var space: ?user.AddressSpace = null;
 var exit_status: u64 = 0;
 var exited: u32 = 0; // atomic
 var resume_rsp: usize = 0;
@@ -49,17 +48,22 @@ pub fn init() void {
     apic.wrmsr(fmask_msr, 0x700 | 0x40000); // TF|IF|DF|AC
 }
 
-pub fn setAddressSpace(address_space: user.AddressSpace) void {
-    space = address_space;
+fn currentSpace() ?user.AddressSpace {
+    const pml4 = percpu.current().user_space;
+    if (pml4 == 0) return null;
+    return .{ .pml4 = pml4 };
 }
 
-/// Drops to ring3 at `rip` in the configured address space; returns the exit
-/// status once the program exits.
-pub fn runUser(rip: u64, user_rsp: u64) u64 {
-    const address_space = space orelse return error_value;
+/// Drops to ring3 at `rip` in `address_space`; returns the exit status once
+/// the program exits. The space lives in the per-CPU block so user threads on
+/// different CPUs never share it.
+pub fn runUser(address_space: user.AddressSpace, rip: u64, user_rsp: u64) u64 {
+    const block = percpu.current();
+    block.user_space = address_space.pml4;
     const previous = paging.activate(address_space.pml4);
     const status = enterUser(rip, user_rsp, &resume_rsp);
     _ = paging.activate(previous);
+    block.user_space = 0;
     // enterUser runs with interrupts off; the kernel thread resumes with them
     // back on (the syscall path left them masked by FMASK).
     cpu.enableInterrupts();
@@ -94,7 +98,7 @@ export fn syscallHandler(frame: *Frame) callconv(.c) u64 {
 fn write(handle: u64, ptr: u64, len: u64) u64 {
     if (handle != 1) return error_value; // console handle
     if (len > 4096) return error_value;
-    const address_space = space orelse return error_value;
+    const address_space = currentSpace() orelse return error_value;
 
     var buf: [64]u8 = undefined;
     var done: u64 = 0;

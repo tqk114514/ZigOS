@@ -151,6 +151,20 @@ fn nullArray(comptime n: usize) [n]?*Thread {
 }
 
 /// Starts scheduling on the current CPU with the boot context as current.
+pub fn waitApReady() bool {
+    const deadline = arch.rdtsc() + deadline_ticks;
+    const self = arch.cpuIndex();
+    var cpu: usize = 0;
+    while (cpu < arch.cpuCount()) : (cpu += 1) {
+        if (cpu == self) continue;
+        while (@atomicLoad(u32, &queues[cpu].ready, .acquire) == 0) {
+            if (arch.rdtsc() > deadline) return false;
+            arch.cpuPause();
+        }
+    }
+    return true;
+}
+
 pub fn startKernelScheduler() bool {
     const cpu = arch.cpuIndex();
     if (cpu >= arch.cpu_limit or !setupCpu(cpu)) return false;
@@ -389,7 +403,7 @@ fn wakerEntry() callconv(.c) void {
     }
 }
 
-fn spawn(entry: *const fn () callconv(.c) void, cpu: usize) ?*Thread {
+pub fn spawn(entry: *const fn () callconv(.c) void, cpu: usize) ?*Thread {
     const pool_irq = pool_lock.acquire();
     var slot: ?*Thread = null;
     for (&threads) |*t| {

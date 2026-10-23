@@ -1,7 +1,9 @@
 //! User address spaces and the untrusted-pointer boundary. User pages are
 //! W^X; every user memory access goes through copyFromUser/copyToUser.
 
+const cpu = @import("cpu.zig");
 const frame = @import("frame.zig");
+const tlb = @import("tlb.zig");
 const limine = @import("limine.zig");
 const paging = @import("paging.zig");
 const serial = @import("serial.zig");
@@ -133,8 +135,7 @@ pub fn runSmoke() bool {
     const program = comptime buildProgram();
     @memcpy(code[0..program.len], &program);
 
-    syscall.setAddressSpace(space);
-    const status = syscall.runUser(user_code, user_stack + 0x1000 - 16);
+    const status = syscall.runUser(space, user_code, user_stack + 0x1000 - 16);
     if (status != 0) return false;
     if (syscall.exitedWith()) |code_status| {
         if (code_status != 0) return false;
@@ -145,7 +146,7 @@ pub fn runSmoke() bool {
     const spin_code: [*]u8 = @ptrFromInt(paging.hhdmOffset() + spin_phys);
     const spin_program = comptime buildSpinProgram();
     @memcpy(spin_code[0..spin_program.len], &spin_program);
-    const spin_status = syscall.runUser(user_code2, user_stack + 0x1000 - 16);
+    const spin_status = syscall.runUser(space, user_code2, user_stack + 0x1000 - 16);
     if (spin_status != 0) return false;
     if (syscall.exitedWith()) |code_status| {
         if (code_status != 0) return false;
@@ -234,5 +235,133 @@ fn buildProgram() [program_len]u8 {
     out[37] = 0xfe; // jmp . (fallback)
     const msg = "USER OK\n";
     for (msg, 0..) |c, j| out[msg_offset + j] = c;
+    return out;
+}
+
+// ---- A2: a second address space and a user thread on another CPU ----
+
+const space_b_test: u64 = user_base + 0x5000;
+const space_b_code: u64 = user_base + 0x6000;
+const smp_program_len: usize = 62;
+const smp_msg_offset: usize = 55;
+
+var smp_space: AddressSpace = undefined;
+var smp_ready: bool = false;
+var smp_started: u32 = 0; // atomic
+var smp_done: u32 = 0; // atomic
+var smp_exit_ok: u32 = 0; // atomic
+
+/// Prepares space B: stack, a test page holding 'A', and the polling program.
+pub fn prepareUserSmp() bool {
+    const space = create() orelse return false;
+    smp_space = space;
+    if (mapUser(space, user_stack, true, false) == null) return false;
+    if (mapUser(space, space_b_test, true, false) == null) return false;
+    const code_phys = mapUser(space, space_b_code, false, true) orelse return false;
+
+    const hhdm = paging.hhdmOffset();
+    const test_pte = paging.pteIn(space.pml4, space_b_test) orelse return false;
+    const test_page: [*]u8 = @ptrFromInt(hhdm + paging.physFromPte(test_pte));
+    test_page[0] = 'A';
+
+    const code: [*]u8 = @ptrFromInt(hhdm + code_phys);
+    const program = comptime buildSmpProgram();
+    @memcpy(code[0..program.len], &program);
+    smp_ready = true;
+    return true;
+}
+
+/// Kernel thread body: runs space B's program on its CPU.
+pub fn runUserSmpThread() bool {
+    if (!smp_ready) return false;
+    @atomicStore(u32, &smp_started, 1, .release);
+    const status = syscall.runUser(smp_space, space_b_code, user_stack + 0x1000 - 16);
+    if (status == 0) {
+        if (syscall.exitedWith()) |code| {
+            if (code == 0) @atomicStore(u32, &smp_exit_ok, 1, .release);
+        }
+    }
+    @atomicStore(u32, &smp_done, 1, .release);
+    return true;
+}
+
+/// Boot CPU: remaps the test page to 'B' (with a TLB shootdown) while the
+/// worker runs, then waits for it to observe the new contents and exit.
+pub fn finishUserSmp() bool {
+    const deadline = cpu.rdtsc() + 4_000_000_000;
+    while (@atomicLoad(u32, &smp_started, .acquire) == 0) {
+        if (cpu.rdtsc() > deadline) return false;
+        cpu.pause();
+    }
+    const settle = cpu.rdtsc() + 50_000_000;
+    while (cpu.rdtsc() < settle) cpu.pause();
+
+    serial.console.write("A2: stage remap\n");
+    const old_pte = paging.pteIn(smp_space.pml4, space_b_test) orelse return false;
+    const new_phys = frame.allocFrame() orelse return false;
+    const page: [*]u8 = @ptrFromInt(paging.hhdmOffset() + new_phys);
+    @memset(page[0..4096], 0);
+    page[0] = 'B';
+    if (!paging.mapPageIn(smp_space.pml4, space_b_test, new_phys, paging.flags_user | paging.flags_rw | paging.flags_nx)) return false;
+    serial.console.write("A2: stage shootdown\n");
+    if (!tlb.shootdown()) {
+        serial.console.write("A2: shootdown failed\n");
+        return false;
+    }
+    frame.freeFrame(paging.physFromPte(old_pte));
+
+    const wait_deadline = cpu.rdtsc() + 4_000_000_000;
+    while (@atomicLoad(u32, &smp_done, .acquire) == 0) {
+        if (cpu.rdtsc() > wait_deadline) return false;
+        cpu.pause();
+    }
+    if (@atomicLoad(u32, &smp_exit_ok, .acquire) == 0) return false;
+    serial.console.write("USER: space B remapped ok\n");
+    return true;
+}
+
+fn buildSmpProgram() [smp_program_len]u8 {
+    var out: [smp_program_len]u8 = undefined;
+    for (&out) |*b| b.* = 0;
+    out[0] = 0x48;
+    out[1] = 0xbe; // movabs $test, %rsi
+    var test_addr = space_b_test;
+    var i: usize = 0;
+    while (i < 8) : (i += 1) {
+        out[2 + i] = @truncate(test_addr);
+        test_addr >>= 8;
+    }
+    out[10] = 0x0f;
+    out[11] = 0xb6;
+    out[12] = 0x06; // movzbl (%rsi), %eax
+    out[13] = 0x3c;
+    out[14] = 0x42; // cmp $'B', %al
+    out[15] = 0x75;
+    out[16] = 0xf9; // jne -7
+    out[17] = 0xb8;
+    out[18] = 1; // mov $1, %eax
+    out[22] = 0xbf;
+    out[23] = 1; // mov $1, %edi
+    out[27] = 0x48;
+    out[28] = 0xbe; // movabs $msg, %rsi
+    var msg_addr = space_b_code + smp_msg_offset;
+    i = 0;
+    while (i < 8) : (i += 1) {
+        out[29 + i] = @truncate(msg_addr);
+        msg_addr >>= 8;
+    }
+    out[37] = 0xba;
+    out[38] = 7; // mov $7, %edx
+    out[42] = 0x0f;
+    out[43] = 0x05; // syscall write
+    out[44] = 0xb8; // mov $0, %eax
+    out[49] = 0x31;
+    out[50] = 0xff; // xor %edi, %edi
+    out[51] = 0x0f;
+    out[52] = 0x05; // syscall exit
+    out[53] = 0xeb;
+    out[54] = 0xfe; // jmp .
+    const msg = "B DONE\n";
+    for (msg, 0..) |c, j| out[smp_msg_offset + j] = c;
     return out;
 }

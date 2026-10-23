@@ -34,6 +34,8 @@ pub fn shootdown() bool {
     @atomicStore(u64, &generation, next, .release);
     const self = percpu.current().index;
     const count = percpu.count();
+    // The initiator's own entries were flushed locally; record it as acked.
+    seen[self] = next;
 
     var index: usize = 0;
     while (index < count) : (index += 1) {

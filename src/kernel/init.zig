@@ -87,13 +87,27 @@ pub fn main() noreturn {
         arch.setVectorHandler(arch.timer_vector, sched.onTimer);
         arch.setVectorHandler(arch.ipi_vector, sched.onIpi);
         arch.setPreemptHook(sched.preempt);
-        const started = sched.startKernelScheduler();
+        arch.setApHandler(sched.apEntry);
+        _ = arch.startAps();
+        const started = sched.startKernelScheduler() and sched.waitApReady();
         const ticks_before = sched.ticksNow();
         const switches_before = sched.switchesNow();
         const ok = started and arch.runUserSmoke();
         const preemptions = sched.ticksNow() - ticks_before;
         const switches = sched.switchesNow() - switches_before;
-        if (ok and preemptions >= 2 and switches >= 2) {
+
+        var a2_ok = true;
+        if (ok and arch.cpuCount() >= 2) {
+            if (!arch.prepareUserSmp()) {
+                a2_ok = false;
+            } else if (!sched.spawn(&userSmpThread, 1)) {
+                a2_ok = false;
+            } else {
+                a2_ok = arch.finishUserSmp();
+            }
+        }
+
+        if (ok and a2_ok and preemptions >= 2 and switches >= 2) {
             console.write("USER: preempt ticks ");
             format.writeDec(console, preemptions);
             console.write(" switches ");
@@ -146,6 +160,10 @@ pub fn main() noreturn {
     console.write("ZigOS M1 OK\n");
     arch.qemuExit(0x10);
     arch.halt();
+}
+
+fn userSmpThread() callconv(.c) void {
+    _ = arch.runUserSmpThread();
 }
 
 noinline fn probeWrite(array: *[1]u8, index: usize) void {

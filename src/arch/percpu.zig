@@ -16,6 +16,7 @@ pub const Cpu = extern struct {
     online: u32,
     entry_rsp: u64,
     user_rsp: u64,
+    user_space: u64,
 };
 
 // syscall.S hard-codes these GS-relative offsets.
@@ -54,6 +55,7 @@ pub fn setup(index: usize, apic_id: u32) *Cpu {
     entry.apic_id = apic_id;
     entry.entry_rsp = 0;
     entry.user_rsp = 0;
+    entry.user_space = 0;
     apic.wrmsr(gs_base_msr, @intFromPtr(entry));
     // User GS starts empty; syscall entry swaps the two bases.
     apic.wrmsr(kernel_gs_base_msr, 0);
