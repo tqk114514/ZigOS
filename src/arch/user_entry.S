@@ -14,6 +14,12 @@ enterUser:
     pushq %r14
     pushq %r15
     movq %rsp, (%rdx)
+    # Do not leak kernel register state into user mode.
+    xorl %ebp, %ebp
+    xorl %r12d, %r12d
+    xorl %r13d, %r13d
+    xorl %r14d, %r14d
+    xorl %r15d, %r15d
     movq %rsi, %rax
     pushq $0x1b                # SS: user data | RPL3
     pushq %rax                 # user rsp

@@ -69,16 +69,19 @@ pub const WaitQueue = struct {
     pub fn wait(self: *WaitQueue) void {
         const was_enabled = arch.saveAndDisableInterrupts();
         const irq = self.lock.acquire();
-        const t = queues[arch.cpuIndex()].current;
-        if (self.count < max_threads) {
-            self.waiters[self.count] = t;
-            self.count += 1;
-            t.state = .blocked;
+        const cpu = arch.cpuIndex();
+        const t = queues[cpu].current;
+        // An idle thread has nowhere to block; treat that as a no-op.
+        if (t == queues[cpu].idle or self.count >= max_threads) {
             self.lock.release(irq);
-            blockCurrent();
-        } else {
-            self.lock.release(irq);
+            arch.restoreInterrupts(was_enabled);
+            return;
         }
+        self.waiters[self.count] = t;
+        self.count += 1;
+        t.state = .blocked;
+        self.lock.release(irq);
+        blockCurrent();
         arch.restoreInterrupts(was_enabled);
     }
 
@@ -205,7 +208,11 @@ pub fn preempt() callconv(.c) void {
         return;
     }
     const target = next.?;
-    if (prev != q.idle) enqueue(q, prev);
+    if (prev != q.idle) {
+        prev.state = .runnable;
+        enqueue(q, prev);
+    }
+    target.state = .running;
     q.current = target;
     @atomicStore(u64, &q.switches, @atomicLoad(u64, &q.switches, .monotonic) + 1, .monotonic);
     q.ticks_left = quantum_ticks;
