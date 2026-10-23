@@ -75,6 +75,10 @@ pub fn run() bool {
     big[8191] = 9;
     if (big[0] != 7 or big[8191] != 9) return false;
 
+    const stats = heap.stats();
+    if (stats.live_blocks < 2) return false;
+    if (stats.live_bytes == 0 or stats.live_bytes > stats.capacity_bytes) return false;
+
     // Keep the faulting heap writes ordered before the effect checks below.
     asm volatile ("" ::: .{ .memory = true });
     const faults = paging.demandFaults();
@@ -94,7 +98,12 @@ pub fn run() bool {
     console.write("\n");
 
     if (!framePressure()) return false;
+
+    const before_pressure = heap.stats();
     if (!heapPressure()) return false;
+    const after_pressure = heap.stats();
+    if (after_pressure.live_blocks != before_pressure.live_blocks) return false;
+    if (after_pressure.live_bytes != before_pressure.live_bytes) return false;
     return true;
 }
 
@@ -126,6 +135,7 @@ fn heapPressure() bool {
     // First-fit serves the most recently freed head.
     const reuse = kh.alloc(4096) orelse return false;
     if (@intFromPtr(reuse.ptr) != pressure_slots[0]) return false;
+    kh.free(reuse);
 
     serial.console.write("MEM: heap pressure ");
     format.writeDec(serial.console, blocks);

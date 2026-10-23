@@ -13,11 +13,19 @@ const Block = extern struct {
     next: ?*Block,
 };
 
+pub const Stats = struct {
+    live_blocks: u64,
+    live_bytes: u64, // includes block headers and alignment padding
+    capacity_bytes: u64,
+};
+
 pub const Heap = struct {
     lock: spinlock.Lock align(64) = .{},
     pos: u64,
     end: u64,
     free_list: ?*Block = null,
+    live_blocks: u64 = 0,
+    live_bytes: u64 = 0,
 
     pub fn alloc(self: *Heap, len: usize) ?[]u8 {
         const irq = self.lock.acquire();
@@ -33,6 +41,8 @@ pub const Heap = struct {
                 } else {
                     self.free_list = block.next;
                 }
+                self.live_blocks += 1;
+                self.live_bytes += block.size;
                 return payload(block, len);
             }
             prev = block;
@@ -45,6 +55,8 @@ pub const Heap = struct {
         const block: *Block = @ptrFromInt(start);
         block.size = need;
         block.next = null;
+        self.live_blocks += 1;
+        self.live_bytes += need;
         return payload(block, len);
     }
 
@@ -54,6 +66,8 @@ pub const Heap = struct {
 
         const start: usize = @intFromPtr(bytes.ptr) - @sizeOf(Block);
         const block: *Block = @ptrFromInt(start);
+        self.live_blocks -= 1;
+        self.live_bytes -= block.size;
         block.next = self.free_list;
         self.free_list = block;
     }
@@ -63,6 +77,17 @@ var kernel_heap: Heap = .{
     .pos = heap_base,
     .end = heap_base + heap_size,
 };
+
+pub fn stats() Stats {
+    const heap = kernel();
+    const irq = heap.lock.acquire();
+    defer heap.lock.release(irq);
+    return .{
+        .live_blocks = heap.live_blocks,
+        .live_bytes = heap.live_bytes,
+        .capacity_bytes = heap_size,
+    };
+}
 
 pub fn kernel() *Heap {
     return &kernel_heap;

@@ -12,6 +12,7 @@ const bench = @import("bench.zig");
 const exceptions = @import("exceptions.zig");
 const extirq = @import("extirq.zig");
 const gdt = @import("gdt.zig");
+const heap = @import("heap.zig");
 const memory = @import("memory.zig");
 const smp = @import("smp.zig");
 const timer = @import("timer.zig");
@@ -21,6 +22,9 @@ const user = @import("user.zig");
 
 pub const serial_console = serial.console;
 pub const Lock = spinlock.Lock;
+pub const HeapStats = heap.Stats;
+pub const UserSpace = user.AddressSpace;
+pub const SyscallDispatch = syscall.Dispatch;
 pub const VectorHandler = exceptions.VectorHandler;
 pub const cpu_limit: usize = percpu.max_cpus;
 pub const timer_vector: u8 = @intCast(exceptions.timer_vector);
@@ -64,6 +68,26 @@ pub fn runExternalSmoke() bool {
 
 pub fn initSyscall() void {
     syscall.init();
+}
+
+pub fn setSyscallDispatch(handler: ?SyscallDispatch) void {
+    syscall.setDispatch(handler);
+}
+
+pub fn setConsoleHandle(handle: u64) void {
+    user.setConsoleHandle(handle);
+}
+
+pub fn currentUserSpace() ?UserSpace {
+    return syscall.currentAddressSpace();
+}
+
+pub fn copyFromUserSpace(space: UserSpace, dst: []u8, src: u64) bool {
+    return syscall.copyFromUser(space, dst, src);
+}
+
+pub fn heapStats() HeapStats {
+    return heap.stats();
 }
 
 pub fn initTlb() void {
