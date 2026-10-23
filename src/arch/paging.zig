@@ -165,6 +165,23 @@ pub fn copyKernelEntries(new_pml4: u64) bool {
     return true;
 }
 
+/// Installs a new PML4; returns the previous one. The kernel half must be
+/// shared (create() guarantees that).
+pub fn activate(pml4_phys: u64) u64 {
+    const previous = currentCr3() & phys_mask;
+    // SAFETY: writing CR3 at CPL0; the new tables keep the kernel half mapped.
+    asm volatile ("movq %[value], %%cr3"
+        :
+        : [value] "r" (pml4_phys),
+        : .{ .memory = true });
+    return previous;
+}
+
+/// Address that caused the current page fault (CR2).
+pub fn faultAddress() u64 {
+    return readCr2();
+}
+
 pub fn tablePtr(phys: u64) *[512]u64 {
     // SAFETY: HHDM maps all physical RAM; page tables are 4 KiB frames.
     return @ptrFromInt(hhdm + phys);

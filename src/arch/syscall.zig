@@ -2,6 +2,7 @@
 //! masked (FMASK) and no allocation; user pointers only cross via copyFromUser.
 
 const apic = @import("apic.zig");
+const paging = @import("paging.zig");
 const serial = @import("serial.zig");
 const user = @import("user.zig");
 
@@ -29,11 +30,14 @@ pub const Frame = extern struct {
 };
 
 extern fn syscallEntry() callconv(.c) void;
+extern fn enterUser(rip: u64, user_rsp: u64, resume_slot: *usize) callconv(.c) u64;
+extern fn leaveUserKernel(resume_slot: usize, status: u64) callconv(.c) noreturn;
 
 // M2: one user thread at a time; the owner sets the space before entering.
 var space: ?user.AddressSpace = null;
 var exit_status: u64 = 0;
 var exited: u32 = 0; // atomic
+var resume_rsp: usize = 0;
 
 pub fn init() void {
     // STAR: syscall CS/SS from bits 47:32; sysret computes CS = +16, SS = +8
@@ -46,6 +50,22 @@ pub fn init() void {
 
 pub fn setAddressSpace(address_space: user.AddressSpace) void {
     space = address_space;
+}
+
+/// Drops to ring3 at `rip` in the configured address space; returns the exit
+/// status once the program exits.
+pub fn runUser(rip: u64, user_rsp: u64) u64 {
+    const address_space = space orelse return error_value;
+    const previous = paging.activate(address_space.pml4);
+    const status = enterUser(rip, user_rsp, &resume_rsp);
+    _ = paging.activate(previous);
+    return status;
+}
+
+fn exitUser(status: u64) noreturn {
+    exit_status = status;
+    @atomicStore(u32, &exited, 1, .release);
+    leaveUserKernel(resume_rsp, status);
 }
 
 pub fn exitedWith() ?u64 {
@@ -62,11 +82,7 @@ export fn syscallHandler(frame: *Frame) callconv(.c) u64 {
     switch (frame.number) {
         number_write => return write(frame.a1, frame.a2, frame.a3),
         number_yield => return 0, // preemption already covers it
-        number_exit => {
-            exit_status = frame.a1;
-            @atomicStore(u32, &exited, 1, .release);
-            return 0;
-        },
+        number_exit => exitUser(frame.a1),
         else => return error_value,
     }
 }

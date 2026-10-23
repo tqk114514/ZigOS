@@ -215,6 +215,7 @@ fn addKernel(
     module.addImport("config", options.createModule());
     module.addAssemblyFile(b.path("src/arch/context.S"));
     module.addAssemblyFile(b.path("src/arch/syscall.S"));
+    module.addAssemblyFile(b.path("src/arch/user_entry.S"));
     module.addAssemblyFile(b.path("src/arch/exceptions.S"));
     module.addAssemblyFile(b.path("src/arch/irqs.S"));
     module.addAssemblyFile(b.path("src/arch/pf.S"));
