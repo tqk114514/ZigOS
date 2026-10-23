@@ -2,7 +2,7 @@
 
 一个用 Zig 编写的模块化宏内核，第一目标平台是 QEMU/virt 上的 x86_64。
 
-当前状态：M2 进行中。M1 已完成（含内存压力测试与性能基准设施）；SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列、对象/句柄核心已落地；syscall、用户态未开始。
+当前状态：M2 进行中。M1 已完成（含内存压力测试与性能基准设施）；SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列、对象/句柄核心、用户地址空间与 copy_from_user/copy_to_user 已落地；syscall 入口与用户态程序未开始。
 
 ## 文档
 
@@ -25,6 +25,7 @@
 - [ADR-0012](docs/adr/0012-m2-scheduler-core.md) — 抢占式调度器核心与 IPI
 - [ADR-0013](docs/adr/0013-m2-sleep-wake.md) — 睡眠/唤醒与等待队列
 - [ADR-0014](docs/adr/0014-m2-objects-and-handles.md) — 对象与句柄
+- [ADR-0015](docs/adr/0015-m2-syscall-user-mode.md) — syscall 与用户态
 
 ## 工具链
 
@@ -49,7 +50,7 @@ zig build bench
 
 `zig build` 默认运行 `check-deps`、host tests，并构建 ReleaseSafe kernel。Debug 必须显式 `-Doptimize=Debug`。
 
-`zig build qemu-smoke` 需要 QEMU + OVMF；默认跑 ReleaseSafe，`-Doptimize=Debug` 跑 Debug 变体。脚本会下载 Limine，并使用 `-cpu max` 启动正常、panic、exception、nmi、timer、mem、irq、smp、sched、object 十个变体，每个变体各跑 `smp=1` 与 `smp=4`；mem 变体覆盖帧分配、页表映射、内核堆、按需分页和帧/堆耗尽压力测试（x2APIC timer 需要该 CPU 模型）。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
+`zig build qemu-smoke` 需要 QEMU + OVMF；默认跑 ReleaseSafe，`-Doptimize=Debug` 跑 Debug 变体。脚本会下载 Limine，并使用 `-cpu max` 启动正常、panic、exception、nmi、timer、mem、irq、smp、sched、object、user 十一个变体，每个变体各跑 `smp=1` 与 `smp=4`；mem 变体覆盖帧分配、页表映射、内核堆、按需分页和帧/堆耗尽压力测试（x2APIC timer 需要该 CPU 模型）。Windows 本地可设 `QEMU_ACCEL=whpx`，默认 TCG。
 
 `zig build bench` 在 QEMU `-icount shift=7,sleep=off` 下运行确定性基准（帧分配、堆分配、按需分页），与 [tests/bench-baseline.txt](tests/bench-baseline.txt) 比较，慢 5% 以上即失败。基线属 ReleaseSafe 与当时的 QEMU 版本；刷新用 `BENCH_UPDATE=1 bash tests/qemu-bench.sh` 并单独提交。
 
@@ -62,7 +63,7 @@ build.zig / build.zig.zon   构建入口，Zig 0.17.0
 boot/limine.conf            Limine 启动配置
 src/                        内核源码
 tests/qemu-env.sh           QEMU/OVMF/Limine 的公共测试环境
-tests/qemu-smoke.sh         OVMF + vvfat + Limine 的十变体 smoke
+tests/qemu-smoke.sh         OVMF + vvfat + Limine 的十一变体 smoke
 tests/qemu-bench.sh          icount 基准与 5% 回归门禁
 tests/bench-baseline.txt    基准基线（ReleaseSafe）
 tools/check_deps.zig        依赖与 import 规则检查器
