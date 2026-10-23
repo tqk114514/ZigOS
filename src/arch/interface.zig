@@ -91,6 +91,14 @@ pub fn enableInterrupts() void {
     cpu.enableInterrupts();
 }
 
+pub fn saveAndDisableInterrupts() bool {
+    return cpu.saveAndDisableInterrupts();
+}
+
+pub fn restoreInterrupts(enabled: bool) void {
+    cpu.restoreInterrupts(enabled);
+}
+
 pub fn rdtsc() u64 {
     return cpu.rdtsc();
 }

@@ -14,12 +14,18 @@ const worker_target: u64 = 200_000;
 const workers_per_cpu: usize = 2;
 const deadline_ticks: u64 = 4_000_000_000;
 
+const State = enum { free, runnable, running, blocked };
+
 pub const Thread = struct {
     rsp: usize = 0,
     entry: ?*const fn () callconv(.c) void = null,
+    state: State = .free,
     id: usize = 0,
     cpu: usize = 0,
     counter: u64 = 0,
+    wake_at: u64 = 0,
+    woke_at: u64 = 0,
+    verified: u32 = 0, // atomic
     done: u32 = 0, // atomic
 };
 
@@ -47,6 +53,88 @@ var pool_lock: arch.Lock align(64) = .{};
 var workers: [arch.cpu_limit * workers_per_cpu]?*Thread = nullArray(arch.cpu_limit * workers_per_cpu);
 var worker_count: usize = 0;
 
+// Sleepers and wait queues. Lock order: sleep/wq -> per-CPU queue; never the
+// reverse. Timer handlers run with interrupts disabled.
+var sleep_lock: arch.Lock align(64) = .{};
+var sleepers: [max_threads]?*Thread = nullArray(max_threads);
+var sleeper_count: u32 = 0; // atomic mirror, for the timer fast path
+var ticks: u64 = 0; // atomic-add by timer handlers
+
+pub const WaitQueue = struct {
+    lock: arch.Lock align(64) = .{},
+    waiters: [max_threads]?*Thread = nullArray(max_threads),
+    count: usize = 0,
+
+    /// Blocks the current thread until wakeOne/wakeAll.
+    pub fn wait(self: *WaitQueue) void {
+        const was_enabled = arch.saveAndDisableInterrupts();
+        const irq = self.lock.acquire();
+        const t = queues[arch.cpuIndex()].current;
+        if (self.count < max_threads) {
+            self.waiters[self.count] = t;
+            self.count += 1;
+            t.state = .blocked;
+            self.lock.release(irq);
+            blockCurrent();
+        } else {
+            self.lock.release(irq);
+        }
+        arch.restoreInterrupts(was_enabled);
+    }
+
+    /// Wakes one waiter on its home CPU; returns false when empty.
+    pub fn wakeOne(self: *WaitQueue) bool {
+        const was_enabled = arch.saveAndDisableInterrupts();
+        const irq = self.lock.acquire();
+        if (self.count == 0) {
+            self.lock.release(irq);
+            arch.restoreInterrupts(was_enabled);
+            return false;
+        }
+        const t = self.waiters[0].?;
+        var i: usize = 1;
+        while (i < self.count) : (i += 1) self.waiters[i - 1] = self.waiters[i];
+        self.count -= 1;
+        self.waiters[self.count] = null;
+        self.lock.release(irq);
+        makeRunnable(t);
+        arch.restoreInterrupts(was_enabled);
+        return true;
+    }
+};
+
+var smoke_wq: WaitQueue = .{};
+
+/// Blocks the current thread for at least n timer ticks.
+pub fn sleepTicks(n: u64) void {
+    const was_enabled = arch.saveAndDisableInterrupts();
+    const irq = sleep_lock.acquire();
+    const cpu = arch.cpuIndex();
+    const t = queues[cpu].current;
+    var slot: ?usize = null;
+    for (&sleepers, 0..) |*entry, i| {
+        if (entry.* == null) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == null or t == queues[cpu].idle) {
+        sleep_lock.release(irq);
+        arch.restoreInterrupts(was_enabled);
+        return;
+    }
+    sleepers[slot.?] = t;
+    _ = @atomicRmw(u32, &sleeper_count, .Add, 1, .monotonic);
+    t.state = .blocked;
+    t.wake_at = @atomicLoad(u64, &ticks, .monotonic) + n;
+    sleep_lock.release(irq);
+    blockCurrent();
+    // Resumed by wakeDue on some CPU's timer tick.
+    t.state = .running;
+    t.woke_at = @atomicLoad(u64, &ticks, .monotonic);
+    arch.restoreInterrupts(was_enabled);
+}
+
 fn defaultArray(comptime T: type, comptime n: usize) [n]T {
     var out: [n]T = undefined;
     for (&out) |*slot| slot.* = .{};
@@ -61,6 +149,8 @@ fn nullArray(comptime n: usize) [n]?*Thread {
 
 pub fn onTimer() callconv(.c) void {
     arch.eoi();
+    _ = @atomicRmw(u64, &ticks, .Add, 1, .monotonic);
+    wakeDue();
     const q = &queues[arch.cpuIndex()];
     if (q.need_resched) return;
     if (q.ticks_left > 0) q.ticks_left -= 1;
@@ -213,7 +303,58 @@ pub fn runSmoke() bool {
         format.writeDec(console, t.counter);
         console.write("\n");
     }
+    // Phase 2: timed sleep and a cross-CPU wait-queue wake. Each participant
+    // reports through its own done/verified fields.
+    const sleeper = spawn(&sleeperEntry, ncpus - 1) orelse return false;
+    const waiter = spawn(&waiterEntry, (ncpus - 1) / 2) orelse return false;
+    const waker = spawn(&wakerEntry, ncpus - 1) orelse return false;
+    const wake_deadline = arch.rdtsc() + deadline_ticks;
+    while (@atomicLoad(u32, &sleeper.done, .acquire) == 0 or
+        @atomicLoad(u32, &waiter.done, .acquire) == 0 or
+        @atomicLoad(u32, &waker.done, .acquire) == 0)
+    {
+        if (arch.rdtsc() > wake_deadline) {
+            console.write("SCHED: sleep/wake did not finish\n");
+            return false;
+        }
+        arch.cpuPause();
+    }
+    if (@atomicLoad(u32, &sleeper.verified, .acquire) == 0) return false;
+    if (sleeper.woke_at < 2) return false;
+    if (@atomicLoad(u32, &waiter.verified, .acquire) == 0) return false;
+    console.write("SCHED: sleep ok\n");
+    console.write("SCHED: wake ok\n");
     return true;
+}
+
+fn sleeperEntry() callconv(.c) void {
+    const t = queues[arch.cpuIndex()].current;
+    sleepTicks(2);
+    if (t.woke_at >= 2) @atomicStore(u32, &t.verified, 1, .release);
+    @atomicStore(u32, &t.done, 1, .release);
+    while (true) {
+        asm volatile ("hlt");
+    }
+}
+
+fn waiterEntry() callconv(.c) void {
+    const t = queues[arch.cpuIndex()].current;
+    smoke_wq.wait();
+    @atomicStore(u32, &t.verified, 1, .release);
+    @atomicStore(u32, &t.done, 1, .release);
+    while (true) {
+        asm volatile ("hlt");
+    }
+}
+
+fn wakerEntry() callconv(.c) void {
+    const t = queues[arch.cpuIndex()].current;
+    sleepTicks(2);
+    _ = smoke_wq.wakeOne();
+    @atomicStore(u32, &t.done, 1, .release);
+    while (true) {
+        asm volatile ("hlt");
+    }
 }
 
 fn spawn(entry: *const fn () callconv(.c) void, cpu: usize) ?*Thread {
@@ -230,6 +371,7 @@ fn spawn(entry: *const fn () callconv(.c) void, cpu: usize) ?*Thread {
         return null;
     };
     t.entry = entry;
+    t.state = .runnable;
     pool_lock.release(pool_irq);
 
     t.id = (@intFromPtr(t) - @intFromPtr(&threads[0])) / @sizeOf(Thread);
@@ -257,6 +399,49 @@ fn prepareOn(t: *Thread, stack_top: usize, entry: *const fn () callconv(.c) void
     ret_slot.* = @intFromPtr(&threadTrampoline);
     t.rsp = base;
     t.entry = entry;
+}
+
+/// Switches away from the current (already-blocked) thread. IF stays off; the
+/// caller restores its saved interrupt state after being woken.
+fn blockCurrent() void {
+    const cpu = arch.cpuIndex();
+    const q = &queues[cpu];
+    const irq = q.lock.acquire();
+    const prev = q.current;
+    if (prev == q.idle) {
+        q.lock.release(irq);
+        return;
+    }
+    q.current = takeNext(q) orelse q.idle;
+    q.need_resched = false;
+    @atomicStore(u64, &q.switches, @atomicLoad(u64, &q.switches, .monotonic) + 1, .monotonic);
+    q.ticks_left = quantum_ticks;
+    q.lock.release(irq);
+    arch.switchContext(&prev.rsp, q.current.rsp);
+}
+
+fn makeRunnable(t: *Thread) void {
+    const cpu = t.cpu;
+    const q = &queues[cpu];
+    const irq = q.lock.acquire();
+    t.state = .runnable;
+    enqueue(q, t);
+    q.lock.release(irq);
+    if (cpu != arch.cpuIndex()) arch.sendIpi(arch.apicIdOf(cpu), arch.ipi_vector);
+}
+
+fn wakeDue() void {
+    if (@atomicLoad(u32, &sleeper_count, .monotonic) == 0) return;
+    const irq = sleep_lock.acquire();
+    const now = @atomicLoad(u64, &ticks, .monotonic);
+    for (&sleepers) |*slot| {
+        const t = slot.* orelse continue;
+        if (t.wake_at > now) continue;
+        slot.* = null;
+        _ = @atomicRmw(u32, &sleeper_count, .Sub, 1, .monotonic);
+        makeRunnable(t);
+    }
+    sleep_lock.release(irq);
 }
 
 fn enqueue(q: *Queue, t: *Thread) void {
