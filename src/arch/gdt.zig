@@ -91,6 +91,8 @@ pub fn load() void {
     const selector: u16 = tss_selector_base + @as(u16, @intCast(percpu.current().index)) * 0x10;
     const gdtr_ptr: *align(1) const [10]u8 = &gdtr;
     loadGdtAndTss(gdtr_ptr, selector);
+    const cpu = percpu.current().index;
+    percpu.setEntryStack(@intFromPtr(&kernel_stacks[cpu]) + kernel_stack_size);
 }
 
 pub fn isInIstStack(index: u8, rsp: usize) bool {

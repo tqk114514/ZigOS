@@ -7,13 +7,22 @@ const apic = @import("apic.zig");
 pub const max_cpus: usize = 8;
 
 const gs_base_msr = 0xc0000101;
+const kernel_gs_base_msr = 0xc0000102;
 
 pub const Cpu = extern struct {
     self: *Cpu,
     index: u32,
     apic_id: u32,
     online: u32,
+    entry_rsp: u64,
+    user_rsp: u64,
 };
+
+// syscall.S hard-codes these GS-relative offsets.
+comptime {
+    if (@offsetOf(Cpu, "entry_rsp") != 24) @compileError("syscall.S expects entry_rsp at gs:24");
+    if (@offsetOf(Cpu, "user_rsp") != 32) @compileError("syscall.S expects user_rsp at gs:32");
+}
 
 // Boot-once state: entries are filled by their own CPU before `online`, and
 // read by other CPUs only after acquiring `online`.
@@ -43,8 +52,16 @@ pub fn setup(index: usize, apic_id: u32) *Cpu {
     entry.self = entry;
     entry.index = @intCast(index);
     entry.apic_id = apic_id;
+    entry.entry_rsp = 0;
+    entry.user_rsp = 0;
     apic.wrmsr(gs_base_msr, @intFromPtr(entry));
+    // User GS starts empty; syscall entry swaps the two bases.
+    apic.wrmsr(kernel_gs_base_msr, 0);
     return entry;
+}
+
+pub fn setEntryStack(top: usize) void {
+    current().entry_rsp = top;
 }
 
 pub fn markOnline(entry: *Cpu) void {

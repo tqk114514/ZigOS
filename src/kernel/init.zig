@@ -25,6 +25,7 @@ pub fn main() noreturn {
     }
     arch.initGdt();
     arch.initIdt();
+    arch.initSyscall();
 
     if (config.timer_smoke) {
         arch.initTimer();

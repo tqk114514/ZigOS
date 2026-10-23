@@ -15,6 +15,7 @@ const gdt = @import("gdt.zig");
 const memory = @import("memory.zig");
 const smp = @import("smp.zig");
 const timer = @import("timer.zig");
+const syscall = @import("syscall.zig");
 const user = @import("user.zig");
 
 pub const serial_console = serial.console;
@@ -58,6 +59,14 @@ pub fn runMemorySmoke() bool {
 
 pub fn runExternalSmoke() bool {
     return extirq.run();
+}
+
+pub fn initSyscall() void {
+    syscall.init();
+}
+
+pub fn setUserSpace(address_space: user.AddressSpace) void {
+    syscall.setAddressSpace(address_space);
 }
 
 pub fn runUserSmoke() bool {

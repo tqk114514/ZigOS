@@ -40,6 +40,11 @@ irq_ipi:
     jmp irq_common
 
 irq_common:
+    # Interrupts from ring3 carry an empty GS base; swap to the per-CPU block.
+    testb $3, 24(%rsp)
+    jz 1f
+    swapgs
+1:
     pushq %rax
     pushq %rcx
     pushq %rdx
@@ -68,6 +73,10 @@ irq_common:
     popq %rcx
     popq %rax
     addq $16, %rsp
+    testb $3, 8(%rsp)
+    jz 1f
+    swapgs
+1:
     iretq
 
 .section .rodata

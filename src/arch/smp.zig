@@ -11,6 +11,7 @@ const gdt = @import("gdt.zig");
 const limine = @import("limine.zig");
 const percpu = @import("percpu.zig");
 const serial = @import("serial.zig");
+const syscall = @import("syscall.zig");
 
 const ap_timeout_ticks: u64 = 4_000_000_000;
 
@@ -212,6 +213,7 @@ export fn apMain(info: *limine.MpInfo) callconv(.c) noreturn {
     const block = percpu.setup(index, info.lapic_id);
     gdt.load();
     exceptions.load();
+    syscall.init();
     if (percpu.current() != block) park();
     percpu.markOnline(block);
     if (info.extra_argument == stress_magic) stressWorker();

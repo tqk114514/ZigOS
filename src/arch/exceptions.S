@@ -49,6 +49,10 @@ ISR_ERR 30
 ISR_NOERR 31
 
 isr_common:
+    testb $3, 24(%rsp)
+    jz 1f
+    swapgs
+1:
     movq %rsp, %rdi
     andq $-16, %rsp
     call exceptionHandler

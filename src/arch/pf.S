@@ -6,6 +6,10 @@ pf_stub:
     jmp pf_common
 
 pf_common:
+    testb $3, 24(%rsp)
+    jz 1f
+    swapgs
+1:
     pushq %rax
     pushq %rcx
     pushq %rdx
@@ -35,6 +39,10 @@ pf_common:
     popq %rcx
     popq %rax
     addq $16, %rsp
+    testb $3, 8(%rsp)
+    jz 1f
+    swapgs
+1:
     iretq
 1:
     leaq 80(%rbx), %rdi
