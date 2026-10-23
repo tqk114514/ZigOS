@@ -15,6 +15,7 @@ const gdt = @import("gdt.zig");
 const memory = @import("memory.zig");
 const smp = @import("smp.zig");
 const timer = @import("timer.zig");
+const user = @import("user.zig");
 
 pub const serial_console = serial.console;
 pub const Lock = spinlock.Lock;
@@ -57,6 +58,10 @@ pub fn runMemorySmoke() bool {
 
 pub fn runExternalSmoke() bool {
     return extirq.run();
+}
+
+pub fn runUserSmoke() bool {
+    return user.runSmoke();
 }
 
 pub fn runBench() bool {

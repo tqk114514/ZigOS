@@ -81,6 +81,17 @@ pub fn main() noreturn {
         arch.halt();
     }
 
+    if (config.user_smoke) {
+        if (arch.runUserSmoke()) {
+            console.write("USER OK\n");
+            arch.qemuExit(0x22); // 69
+        } else {
+            console.write("USER FAIL\n");
+            arch.qemuExit(0x23); // 71
+        }
+        arch.halt();
+    }
+
     if (config.object_smoke) {
         if (object.runSmoke()) {
             console.write("OBJECT OK\n");

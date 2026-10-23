@@ -17,6 +17,7 @@ IRQ_KERNEL="$ROOT/zig-out/bin/kernel-irq.elf"
 SMP_KERNEL="$ROOT/zig-out/bin/kernel-smp.elf"
 SCHED_KERNEL="$ROOT/zig-out/bin/kernel-sched.elf"
 OBJECT_KERNEL="$ROOT/zig-out/bin/kernel-object.elf"
+USER_KERNEL="$ROOT/zig-out/bin/kernel-user.elf"
 ACCEL="${QEMU_ACCEL:-tcg}"
 
 check_kernel() {
@@ -36,6 +37,7 @@ check_kernel "$IRQ_KERNEL" kernel-irq
 check_kernel "$SMP_KERNEL" kernel-smp
 check_kernel "$SCHED_KERNEL" kernel-sched
 check_kernel "$OBJECT_KERNEL" kernel-object
+check_kernel "$USER_KERNEL" kernel-user
 
 # shellcheck source=tests/qemu-env.sh
 source "$ROOT/tests/qemu-env.sh"
@@ -97,6 +99,7 @@ for smp in 1 4; do
     run_boot "$SMP_KERNEL" 57 "SMP OK" smp "$smp"
     run_boot "$SCHED_KERNEL" 61 "SCHED OK" sched "$smp"
     run_boot "$OBJECT_KERNEL" 65 "OBJECT OK" object "$smp"
+    run_boot "$USER_KERNEL" 69 "USER OK" user "$smp"
 done
 
 PANIC_LOG="$ROOT/zig-out/serial-panic.log"

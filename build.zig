@@ -84,6 +84,7 @@ pub fn build(b: *std.Build) void {
     const smp_kernel = addKernel(b, kernel_target, optimize, "kernel-smp", .{ .smp_smoke = true });
     const sched_kernel = addKernel(b, kernel_target, optimize, "kernel-sched", .{ .sched_smoke = true });
     const object_kernel = addKernel(b, kernel_target, optimize, "kernel-object", .{ .object_smoke = true });
+    const user_kernel = addKernel(b, kernel_target, optimize, "kernel-user", .{ .user_smoke = true });
 
     const install_kernel = b.addInstallArtifact(kernel, .{ .dest_sub_path = "kernel.elf" });
     const install_panic_kernel = b.addInstallArtifact(panic_kernel, .{ .dest_sub_path = "kernel-panic.elf" });
@@ -96,6 +97,7 @@ pub fn build(b: *std.Build) void {
     const install_smp_kernel = b.addInstallArtifact(smp_kernel, .{ .dest_sub_path = "kernel-smp.elf" });
     const install_sched_kernel = b.addInstallArtifact(sched_kernel, .{ .dest_sub_path = "kernel-sched.elf" });
     const install_object_kernel = b.addInstallArtifact(object_kernel, .{ .dest_sub_path = "kernel-object.elf" });
+    const install_user_kernel = b.addInstallArtifact(user_kernel, .{ .dest_sub_path = "kernel-user.elf" });
 
     const kernel_step = b.step("kernel", "Build the freestanding kernel");
     kernel_step.dependOn(&install_kernel.step);
@@ -130,6 +132,9 @@ pub fn build(b: *std.Build) void {
     const object_kernel_step = b.step("kernel-object", "Build the kernel with the object smoke path");
     object_kernel_step.dependOn(&install_object_kernel.step);
 
+    const user_kernel_step = b.step("kernel-user", "Build the kernel with the user-space smoke path");
+    user_kernel_step.dependOn(&install_user_kernel.step);
+
     const smoke_cmd = b.addSystemCommand(&.{ "bash", "tests/qemu-smoke.sh" });
     smoke_cmd.setCwd(b.path("."));
     smoke_cmd.step.dependOn(&install_kernel.step);
@@ -142,6 +147,7 @@ pub fn build(b: *std.Build) void {
     smoke_cmd.step.dependOn(&install_smp_kernel.step);
     smoke_cmd.step.dependOn(&install_sched_kernel.step);
     smoke_cmd.step.dependOn(&install_object_kernel.step);
+    smoke_cmd.step.dependOn(&install_user_kernel.step);
 
     const smoke_step = b.step("qemu-smoke", "Boot the kernel smoke variants in QEMU");
     smoke_step.dependOn(&smoke_cmd.step);
@@ -173,6 +179,7 @@ const SmokeOptions = struct {
     smp_smoke: bool = false,
     sched_smoke: bool = false,
     object_smoke: bool = false,
+    user_smoke: bool = false,
 };
 
 fn addKernel(
@@ -193,6 +200,7 @@ fn addKernel(
     options.addOption(bool, "smp_smoke", smoke.smp_smoke);
     options.addOption(bool, "sched_smoke", smoke.sched_smoke);
     options.addOption(bool, "object_smoke", smoke.object_smoke);
+    options.addOption(bool, "user_smoke", smoke.user_smoke);
 
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
