@@ -1,5 +1,6 @@
 const arch = @import("../arch/interface.zig");
 const format = @import("../lib/interface.zig").format;
+const fs = @import("../fs/interface.zig");
 const object = @import("../object/interface.zig");
 const syscall_dispatch = @import("syscall.zig");
 const sched = @import("../sched/interface.zig");
@@ -29,6 +30,18 @@ pub fn main() noreturn {
     arch.initSyscall();
     syscall_dispatch.init();
     arch.initTlb();
+
+    const boot_image = arch.moduleImage("/initramfs.img");
+    fs.init(boot_image);
+    if (boot_image) |blob| {
+        console.write("INITRAMFS: ");
+        format.writeDec(console, blob.len);
+        console.write(" bytes ");
+        console.write(if (fs.ready()) " ok" else " invalid");
+        console.write("\n");
+    } else {
+        console.write("INITRAMFS: none\n");
+    }
 
     if (config.timer_smoke) {
         arch.initTimer();

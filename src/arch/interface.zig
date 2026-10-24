@@ -97,6 +97,10 @@ pub fn initMemorySubsystems() bool {
     return true;
 }
 
+pub fn moduleImage(suffix: []const u8) ?[]const u8 {
+    return limine.moduleImage(suffix);
+}
+
 pub fn mapKernelPage(virt: u64) bool {
     return paging.allocKernelPage(virt);
 }

@@ -108,6 +108,13 @@ if ! grep -a -q "BACKTRACE:" "$PANIC_LOG" || ! grep -a -q "  #0 " "$PANIC_LOG"; 
     tail -n 120 "$PANIC_LOG" 2>/dev/null || true
     exit 1
 fi
+if ! grep -a -q "INITRAMFS: .* bytes  ok" "$ROOT/zig-out/serial-normal.log"; then
+    echo "qemu-smoke: initramfs module missing or invalid" >&2
+    tail -n 120 "$ROOT/zig-out/serial-normal.log" 2>/dev/null || true
+    exit 1
+fi
+echo "qemu-smoke: initramfs module OK"
+
 echo "qemu-smoke: backtrace OK"
 
 EXCEPTION_LOG="$ROOT/zig-out/serial-exception.log"

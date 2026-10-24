@@ -89,4 +89,5 @@ stage_esp() {
     mkdir -p "$ESP/EFI/BOOT"
     cp "$LIMINE_DIR/BOOTX64.EFI" "$ESP/EFI/BOOT/BOOTX64.EFI"
     cp "$BOOT_CONF" "$ESP/EFI/BOOT/limine.conf"
+    cp "$ROOT/zig-out/initramfs.img" "$ESP/initramfs.img"
 }

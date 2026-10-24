@@ -111,6 +111,42 @@ const MpRequest = extern struct {
 
 export var limine_mp_request: MpRequest linksection(".limine_requests") = .{};
 
+pub const File = extern struct {
+    revision: u64,
+    address: ?*anyopaque,
+    size: u64,
+    path: ?[*:0]const u8,
+    string: ?*anyopaque,
+    media_type: u32,
+    unused: u32,
+    tftp_ipv4: [4]u8,
+    tftp_port: u32,
+    partition_index: u32,
+    mbr_disk_id: u32,
+    gpt_disk_uuid: [16]u8,
+    gpt_part_uuid: [16]u8,
+    part_uuid: [16]u8,
+};
+
+pub const ModuleResponse = extern struct {
+    revision: u64,
+    module_count: u64,
+    modules: ?[*]*const File,
+};
+
+const ModuleRequest = extern struct {
+    id: [4]u64 = .{
+        common_magic0,
+        common_magic1,
+        0x3e7e279702be32af,
+        0xca1c4f3bd1280cee,
+    },
+    revision: u64 = 0,
+    response: ?*const ModuleResponse = null,
+};
+
+export var limine_module_request: ModuleRequest linksection(".limine_requests") = .{};
+
 export var limine_requests_end: [2]u64 linksection(".limine_requests_end") = .{
     0xadc0e0531bb10d03,
     0x9572709f31764c62,
@@ -142,4 +178,33 @@ pub fn rsdp() ?u64 {
 
 pub fn mp() ?*const MpResponse {
     return limine_mp_request.response;
+}
+
+/// Finds a boot module whose path ends with `suffix` and returns its bytes.
+/// At base revision >= 4 module addresses are HHDM virtual.
+pub fn moduleImage(suffix: []const u8) ?[]const u8 {
+    const response = limine_module_request.response orelse return null;
+    const modules = response.modules orelse return null;
+    var index: usize = 0;
+    while (index < response.module_count) : (index += 1) {
+        const file = modules[index];
+        const path = file.path orelse continue;
+        if (!pathEndsWith(path, suffix)) continue;
+        const address = file.address orelse continue;
+        if (file.size == 0) continue;
+        const bytes: [*]const u8 = @ptrFromInt(@intFromPtr(address));
+        return bytes[0..@intCast(file.size)];
+    }
+    return null;
+}
+
+fn pathEndsWith(path: [*:0]const u8, suffix: []const u8) bool {
+    var len: usize = 0;
+    while (len < 256 and path[len] != 0) : (len += 1) {}
+    if (len < suffix.len) return false;
+    var i: usize = 0;
+    while (i < suffix.len) : (i += 1) {
+        if (path[len - suffix.len + i] != suffix[i]) return false;
+    }
+    return true;
 }

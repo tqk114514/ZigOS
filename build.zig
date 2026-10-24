@@ -61,6 +61,25 @@ pub fn build(b: *std.Build) void {
     const object_tests = b.addTest(.{ .root_module = object_test_mod });
     const run_object_tests = b.addRunArtifact(object_tests);
 
+    const mkinitramfs_mod = b.createModule(.{
+        .root_source_file = b.path("mkinitramfs.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const mkinitramfs_tests = b.addTest(.{ .root_module = mkinitramfs_mod });
+    const run_mkinitramfs_tests = b.addRunArtifact(mkinitramfs_tests);
+
+    const mkinitramfs_exe = b.addExecutable(.{
+        .name = "mkinitramfs",
+        .root_module = mkinitramfs_mod,
+    });
+    const pack_initramfs = b.addRunArtifact(mkinitramfs_exe);
+    pack_initramfs.setCwd(b.path("."));
+    pack_initramfs.addArgs(&.{ "initramfs", "zig-out/initramfs.img" });
+
+    const initramfs_step = b.step("initramfs", "Pack initramfs/ into zig-out/initramfs.img");
+    initramfs_step.dependOn(&pack_initramfs.step);
+
     const fs_test_mod = b.createModule(.{
         .root_source_file = b.path("src/fs/vfs_test.zig"),
         .target = target,
@@ -76,6 +95,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_ioapic_tests.step);
     test_step.dependOn(&run_object_tests.step);
     test_step.dependOn(&run_fs_tests.step);
+    test_step.dependOn(&run_mkinitramfs_tests.step);
 
     const kernel_target = b.resolveTargetQuery(.{
         .cpu_arch = .x86_64,
@@ -157,6 +177,7 @@ pub fn build(b: *std.Build) void {
     smoke_cmd.step.dependOn(&install_sched_kernel.step);
     smoke_cmd.step.dependOn(&install_object_kernel.step);
     smoke_cmd.step.dependOn(&install_user_kernel.step);
+    smoke_cmd.step.dependOn(&pack_initramfs.step);
 
     const smoke_step = b.step("qemu-smoke", "Boot the kernel smoke variants in QEMU");
     smoke_step.dependOn(&smoke_cmd.step);
@@ -175,6 +196,7 @@ pub fn build(b: *std.Build) void {
     b.default_step.dependOn(&run_ioapic_tests.step);
     b.default_step.dependOn(&run_object_tests.step);
     b.default_step.dependOn(&run_fs_tests.step);
+    b.default_step.dependOn(&run_mkinitramfs_tests.step);
     b.default_step.dependOn(&install_kernel.step);
 }
 
