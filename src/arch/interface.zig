@@ -119,6 +119,21 @@ pub fn mapMmioPages(phys: u64, len: usize) ?u64 {
     return base;
 }
 
+pub fn allocFrame() ?u64 {
+    return frame.allocFrame();
+}
+
+pub fn freeFrame(phys: u64) void {
+    frame.freeFrame(phys);
+}
+
+/// Kernel virtual address of a RAM frame; only valid after paging init.
+pub fn physToVirt(phys: u64) ?u64 {
+    const hhdm = paging.hhdmOffset();
+    if (hhdm == 0) return null;
+    return hhdm + phys;
+}
+
 pub fn moduleImage(suffix: []const u8) ?[]const u8 {
     return limine.moduleImage(suffix);
 }

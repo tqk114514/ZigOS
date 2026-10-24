@@ -149,7 +149,9 @@ pub fn main() noreturn {
     }
 
     if (config.blk_smoke) {
-        if (arch.initMemorySubsystems() and arch.initAcpi() and drivers.probe()) {
+        if (arch.initMemorySubsystems() and arch.initAcpi() and
+            drivers.probe() and drivers.runSmoke())
+        {
             console.write("BLK OK\n");
             arch.qemuExit(0x24); // 73
         } else {

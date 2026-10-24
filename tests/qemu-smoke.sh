@@ -195,9 +195,10 @@ if ! grep -a -q "USER: ring3 ok" "$USER_LOG" ||
 fi
 echo "qemu-smoke: user ring3 and preemption OK"
 
-if ! grep -a -q "BLK: pci 1af4:" "$ROOT/zig-out/serial-blk-smp4.log"; then
-    echo "qemu-smoke: blk serial output missing the PCI discovery evidence" >&2
+if ! grep -a -q "BLK: pci 1af4:" "$ROOT/zig-out/serial-blk-smp4.log" ||
+   ! grep -a -q "BLK: read sector 0 ok" "$ROOT/zig-out/serial-blk-smp4.log"; then
+    echo "qemu-smoke: blk serial output missing the discovery or read evidence" >&2
     tail -n 120 "$ROOT/zig-out/serial-blk-smp4.log" 2>/dev/null || true
     exit 1
 fi
-echo "qemu-smoke: virtio-blk discovery OK"
+echo "qemu-smoke: virtio-blk discovery and read OK"
