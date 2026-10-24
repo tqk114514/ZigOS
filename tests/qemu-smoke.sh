@@ -113,7 +113,7 @@ run_shell_boot() {
     local code=0
     set +e
     (
-        local -a commands=("cat /etc/motd" "cat /hello.txt" "cat /missing" "exit")
+        local -a commands=("cat /etc/motd" "cat /hello.txt" "cat /missing" "sysfuzz" "exit")
         local index=0
         while [[ "$index" -lt "${#commands[@]}" ]]; do
             local target=$((index + 1))
@@ -278,9 +278,10 @@ SHELL_LOG="$ROOT/zig-out/serial-shell-smp4.log"
 if ! grep -a -q "ZigOS shell (M3)" "$SHELL_LOG" ||
    ! grep -a -q "ZigOS M3" "$SHELL_LOG" ||
    ! grep -a -q "hello from the packaged initramfs" "$SHELL_LOG" ||
-   ! grep -a -q "not found" "$SHELL_LOG"; then
-    echo "qemu-smoke: shell serial output missing prompt or file contents" >&2
+   ! grep -a -q "not found" "$SHELL_LOG" ||
+   ! grep -a -q "sysfuzz ok" "$SHELL_LOG"; then
+    echo "qemu-smoke: shell serial output missing prompt, file contents, or sysfuzz" >&2
     tail -n 120 "$SHELL_LOG" 2>/dev/null || true
     exit 1
 fi
-echo "qemu-smoke: user shell OK"
+echo "qemu-smoke: user shell and syscall fuzz OK"

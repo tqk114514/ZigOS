@@ -80,6 +80,18 @@ pub fn build(b: *std.Build) void {
     const initramfs_step = b.step("initramfs", "Pack initramfs/ into zig-out/initramfs.img");
     initramfs_step.dependOn(&pack_initramfs.step);
 
+    // Deterministic mutation fuzzing for the image parser; safety on.
+    const fuzz_mod = b.createModule(.{
+        .root_source_file = b.path("fuzz.zig"),
+        .target = target,
+        .optimize = .ReleaseSafe,
+    });
+    const fuzz_exe = b.addExecutable(.{ .name = "fuzz", .root_module = fuzz_mod });
+    const run_fuzz = b.addRunArtifact(fuzz_exe);
+    run_fuzz.setCwd(b.path("."));
+    const fuzz_step = b.step("fuzz", "Mutation-fuzz the initramfs parser");
+    fuzz_step.dependOn(&run_fuzz.step);
+
     const fs_test_mod = b.createModule(.{
         .root_source_file = b.path("src/fs/vfs_test.zig"),
         .target = target,

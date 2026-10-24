@@ -38,6 +38,8 @@ jobs:
         run: zig build check-deps
       - name: User program
         run: zig build shell
+      - name: Fuzz (initramfs)
+        run: zig build fuzz
       - name: Kernel build (Debug)
         run: zig build kernel kernel-panic kernel-exception kernel-nmi kernel-timer kernel-mem kernel-irq kernel-bench kernel-smp kernel-sched kernel-object kernel-user kernel-blk kernel-shell -Doptimize=Debug
       - name: Kernel build (ReleaseSafe)

@@ -37,9 +37,11 @@ export fn shellMain(console: u64) callconv(.c) noreturn {
         if (len == 0) continue;
         const command = line[0..len];
         if (eql(command, "help")) {
-            write(console, "commands: help, cat <path>, exit\n");
+            write(console, "commands: help, cat <path>, sysfuzz, exit\n");
         } else if (eql(command, "exit")) {
             exit(0);
+        } else if (eql(command, "sysfuzz")) {
+            sysfuzz(console);
         } else if (startsWith(command, "cat ")) {
             cat(console, command[4..]);
         } else {
@@ -98,6 +100,70 @@ fn cat(console: u64, path: []const u8) void {
 
 fn write(console: u64, bytes: []const u8) void {
     _ = syscall3(sys_write, console, @intFromPtr(bytes.ptr), bytes.len);
+}
+
+/// Deterministic syscall-argument fuzz: invalid handles, lengths, pointers,
+/// and numbers must return errors instead of disturbing the kernel.
+fn sysfuzz(console: u64) void {
+    var path: [80]u8 = undefined;
+    var state: u64 = 0x9e37_79b9_7f4a_7c15;
+    var index: usize = 0;
+    while (index < path.len) : (index += 1) path[index] = @truncate(next(&state));
+
+    state = 0x0123_4567_89ab_cdef;
+    index = 0;
+    while (index < 4000) : (index += 1) {
+        const number = next(&state) % 7;
+        const handle = next(&state) % 66; // 0..65: console plus invalid slots
+        const len = switch (next(&state) % 6) {
+            0 => 0,
+            1 => 1,
+            2 => 4095,
+            3 => 4096,
+            4 => 4097,
+            else => next(&state) & 0xffff,
+        };
+        const ptr = badPointer(next(&state));
+        switch (number) {
+            1 => {
+                const target = if ((next(&state) & 1) == 0) 0 else handle;
+                _ = syscall3(sys_write, target, ptr, len);
+            },
+            2 => _ = syscall1(2, 0), // yield
+            3 => _ = syscall3(sys_open, @intFromPtr(&path), next(&state) % 81, 0),
+            4 => _ = syscall3(sys_read, 1 + (handle % 64), ptr, len), // never the console
+            5 => _ = syscall1(sys_close, handle),
+            else => _ = syscall3(6 + next(&state) % 1000, next(&state), next(&state), next(&state)),
+        }
+    }
+
+    var ok = true;
+    ok = ok and syscall3(sys_write, 0, badPointer(0xdead), 4097) == error_value;
+    ok = ok and syscall3(sys_open, @intFromPtr(&path), 0, 0) == error_value;
+    ok = ok and syscall3(sys_open, @intFromPtr(&path), path.len + 1, 0) == error_value;
+    ok = ok and syscall3(sys_read, 0, badPointer(0xbeef), 0) == error_value;
+    ok = ok and syscall1(sys_close, 0) == error_value; // console has no manage right
+    ok = ok and syscall3(9999, 0, 0, 0) == error_value;
+    if (ok) write(console, "sysfuzz ok\n") else write(console, "sysfuzz fail\n");
+}
+
+fn next(state: *u64) u64 {
+    state.* ^= state.* << 13;
+    state.* ^= state.* >> 7;
+    state.* ^= state.* << 17;
+    return state.*;
+}
+
+fn badPointer(raw: u64) u64 {
+    const choices = [_]u64{
+        0,
+        0xfff,
+        0x3f_ffff,
+        0x60_0000,
+        0x1_0000_0000,
+        0xffff_ffff_ffff_ffff,
+    };
+    return choices[@intCast(raw % choices.len)];
 }
 
 fn exit(status: u64) noreturn {
