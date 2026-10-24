@@ -4,7 +4,7 @@
 
 ## 项目
 
-面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。M1 已完成（M0 启动、M1 内存/中断、内存压力与性能基准门禁全部落地）。M2 已完成：SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列、对象/句柄核心、用户地址空间与 copy_from_user/copy_to_user、syscall 入口、ring3 用户程序与用户态定时抢占已落地。M2 遗留已清空（ADR-0016/0017/0018：TLB shootdown、双地址空间、堆统计、syscall 句柄、每线程内核栈与 guard page、槽位回收）；M3：只读 VFS 与打包 initramfs（Limine 模块加载、按需镜像）、virtio-blk 设备发现与轮询扇区读取（ACPI MCFG/ECAM、现代 PCI 能力、split virtqueue）、用户态 shell（独立 ELF、open/read/close、COM1 输入、sysfuzz）已落地；收尾审计完成（入口 DF 不变量、有界串口读、fuzz 门禁、virtio BAR 边界），验收物与 fuzz 层齐，CI 绿后关闭。已知遗留：进程退出后的地址空间回收、每进程句柄表、virtio 完成中断/MSI-X、host 覆盖率工具（见 ADR-0021/0022）。
+面向 QEMU/virt 的 x86_64 模块化宏内核，Zig 0.17.0。M1 已完成（M0 启动、M1 内存/中断、内存压力与性能基准门禁全部落地）。M2 已完成：SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列、对象/句柄核心、用户地址空间与 copy_from_user/copy_to_user、syscall 入口、ring3 用户程序与用户态定时抢占已落地。M2 遗留已清空（ADR-0016/0017/0018：TLB shootdown、双地址空间、堆统计、syscall 句柄、每线程内核栈与 guard page、槽位回收）；M3 已完成（2026-10-24，CI run 40079078500）：只读 VFS 与打包 initramfs（Limine 模块加载、按需镜像）、virtio-blk 设备发现与轮询扇区读取（ACPI MCFG/ECAM、现代 PCI 能力、split virtqueue）、用户态 shell（独立 ELF、open/read/close、COM1 输入、sysfuzz）全部落地；收尾审计修复了入口 DF 不变量、有界串口读、fuzz 门禁与 virtio BAR 边界。v1 验收物齐。已知遗留（不阻塞 v1）：进程退出后的地址空间回收、每进程句柄表、virtio 完成中断/MSI-X、host 覆盖率工具（见 ADR-0021/0022）。
 
 v1 = M0 启动 → M1 内存/中断 → M2 SMP/调度/syscall/用户态 → M3 VFS/virtio-blk/shell。网络、可写文件系统、真实硬件、多架构在 v1 之后。v1 明确不做 POSIX/GUI/USB/热加载模块/微内核 IPC；范围变更必须走 ADR。
 
