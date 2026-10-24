@@ -1,6 +1,6 @@
 # 架构
 
-状态：v1 草案。依赖图是强制的；模块内部设计随里程碑和 ADR 演进。M0 的启动链、镜像布局和 QEMU smoke 见 [ADR-0002](adr/0002-m0-boot-chain.md)；M1 的 IDT/致命异常入口见 [ADR-0003](adr/0003-m1-fatal-exception-entry.md)，GDT/TSS/IST 见 [ADR-0004](adr/0004-m1-gdt-tss-ist.md)，x2APIC timer/IRQ 见 [ADR-0005](adr/0005-m1-apic-timer-irq.md)，帧分配/页表映射见 [ADR-0006](adr/0006-m1-frame-allocator-and-paging.md)，内核堆/按需分页见 [ADR-0007](adr/0007-m1-kernel-heap-and-demand-paging.md)，IOAPIC/外部 IRQ 与 MMIO 映射见 [ADR-0008](adr/0008-m1-ioapic-external-irq.md)，性能基准设施见 [ADR-0009](adr/0009-m1-benchmark-harness.md)，M2 的 SMP 启动与 per-CPU 见 [ADR-0010](adr/0010-m2-smp-percpu.md)，自旋锁与分配器加锁见 [ADR-0011](adr/0011-m2-spinlocks-allocator.md)，抢占调度器核心与 IPI 见 [ADR-0012](adr/0012-m2-scheduler-core.md)，睡眠/唤醒与等待队列见 [ADR-0013](adr/0013-m2-sleep-wake.md)，对象与句柄见 [ADR-0014](adr/0014-m2-objects-and-handles.md)，syscall 与用户态见 [ADR-0015](adr/0015-m2-syscall-user-mode.md)，TLB shootdown 见 [ADR-0016](adr/0016-m2-tlb-shootdown.md)，堆统计与 syscall 句柄见 [ADR-0017](adr/0017-m2-heap-stats-syscall-handles.md)，每线程内核栈与 guard page 见 [ADR-0018](adr/0018-m2-thread-stacks-guard.md)，M3 的只读 VFS 与 initramfs 见 [ADR-0019](adr/0019-m3-vfs-initramfs.md)，virtio-blk 见 [ADR-0020](adr/0020-m3-virtio-blk.md)，用户态 shell 与文件 syscall 见 [ADR-0021](adr/0021-m3-user-shell.md)。
+状态：v1 草案。依赖图是强制的；模块内部设计随里程碑和 ADR 演进。M0 的启动链、镜像布局和 QEMU smoke 见 [ADR-0002](adr/0002-m0-boot-chain.md)；M1 的 IDT/致命异常入口见 [ADR-0003](adr/0003-m1-fatal-exception-entry.md)，GDT/TSS/IST 见 [ADR-0004](adr/0004-m1-gdt-tss-ist.md)，x2APIC timer/IRQ 见 [ADR-0005](adr/0005-m1-apic-timer-irq.md)，帧分配/页表映射见 [ADR-0006](adr/0006-m1-frame-allocator-and-paging.md)，内核堆/按需分页见 [ADR-0007](adr/0007-m1-kernel-heap-and-demand-paging.md)，IOAPIC/外部 IRQ 与 MMIO 映射见 [ADR-0008](adr/0008-m1-ioapic-external-irq.md)，性能基准设施见 [ADR-0009](adr/0009-m1-benchmark-harness.md)，M2 的 SMP 启动与 per-CPU 见 [ADR-0010](adr/0010-m2-smp-percpu.md)，自旋锁与分配器加锁见 [ADR-0011](adr/0011-m2-spinlocks-allocator.md)，抢占调度器核心与 IPI 见 [ADR-0012](adr/0012-m2-scheduler-core.md)，睡眠/唤醒与等待队列见 [ADR-0013](adr/0013-m2-sleep-wake.md)，对象与句柄见 [ADR-0014](adr/0014-m2-objects-and-handles.md)，syscall 与用户态见 [ADR-0015](adr/0015-m2-syscall-user-mode.md)，TLB shootdown 见 [ADR-0016](adr/0016-m2-tlb-shootdown.md)，堆统计与 syscall 句柄见 [ADR-0017](adr/0017-m2-heap-stats-syscall-handles.md)，每线程内核栈与 guard page 见 [ADR-0018](adr/0018-m2-thread-stacks-guard.md)，M3 的只读 VFS 与 initramfs 见 [ADR-0019](adr/0019-m3-vfs-initramfs.md)，virtio-blk 见 [ADR-0020](adr/0020-m3-virtio-blk.md)，用户态 shell 与文件 syscall 见 [ADR-0021](adr/0021-m3-user-shell.md)，fuzz 门禁见 [ADR-0022](adr/0022-m3-fuzz-gate.md)。
 
 ## 1. 形态
 
@@ -23,7 +23,7 @@ src/
   lib/              freestanding 基础设施，无项目内依赖
   hal/              硬件抽象接口，只依赖 lib
   arch/             x86_64 实现：GDT/IDT、上下文切换、页表原语、APIC、SMP
-  mm/               物理页、地址空间、页表、内核堆、copy_from_user
+  mm/              预留模块；帧分配、页表、内核堆目前位于 arch
   object/           对象与句柄、生命周期、权限
   sched/            线程、per-CPU 运行队列、抢占、时钟、IPI、等待队列
   fs/               VFS、initramfs、块缓存、文件对象
@@ -44,7 +44,7 @@ deps/               smoke 下载的 Limine 等缓存（gitignored）
 | `lib` | `src/lib/` | 无（仅 std 白名单） |
 | `hal` | `src/hal/` | `lib` |
 | `arch` | `src/arch/` | `lib`, `hal` |
-| `mm` | `src/mm/` | `lib`, `hal`, `arch` |
+| `mm` | `src/mm/`（预留） | `lib`, `hal`, `arch` |
 | `object` | `src/object/` | `lib`, `hal`, `arch`, `mm` |
 | `sched` | `src/sched/` | `lib`, `hal`, `arch`, `mm`, `object` |
 | `fs` | `src/fs/` | `lib`, `hal`, `arch`, `mm`, `object`, `sched` |
@@ -61,6 +61,7 @@ deps/               smoke 下载的 Limine 等缓存（gitignored）
 - `kernel` 可以导入构建系统提供的 `config` 模块（编译期开关，目前只有 `panic_smoke`）；其他模块禁止。`check-deps` 强制。
 - `tests/` 可以导入任意接口，不受内核依赖图限制；`tools/` 是 host 代码，不进入内核构建。
 - `tools/check_deps.zig` 是依赖图的执行者；本表与它必须一致。修改依赖图需要 ADR，并同时更新两者。
+- `mm` 仍是预留模块：帧分配、页表、内核堆与用户拷贝当前由 `arch` 承载；拆分它需要 ADR 与调用方迁移。
 
 ## 4. 模块职责
 
@@ -78,7 +79,7 @@ deps/               smoke 下载的 Limine 等缓存（gitignored）
 ## 5. 关键约束
 
 - **SMP-first**：per-CPU 数据、显式锁、无 BKL。单核只是测试配置。
-- **锁序**（M2 起）：`paging → frame`、`heap → frame`；`paging` 与 `heap` 不嵌套；禁止反向。自旋锁获取一律保存并关闭本地中断，释放时恢复。详见 ADR-0011。
+- **锁序**（M2 起）：`paging → frame`、`heap → frame`；`paging` 与 `heap` 不嵌套；禁止反向。自旋锁获取一律保存并关闭本地中断，释放时恢复。详见 ADR-0011。`serial` 的输出锁与输入锁互不嵌套；`kernel` 的文件槽锁只在 syscall 内短暂持有，绝不跨句柄表插入/移除。详见 ADR-0021。
 - **接口所有权**：`interface.zig` 是模块唯一的公开面；内部类型不跨模块暴露。需要跨模块传递的不透明句柄用 `object` 的句柄，而不是裸指针。
 - **分配**：所有分配显式传入 allocator；模块不持有隐藏的全局堆。`kernel` 在启动时创建内核堆并注入需要的子系统。
 - **错误**：模块间接口使用 error union；panic 只用于不变量破坏。
@@ -91,7 +92,7 @@ deps/               smoke 下载的 Limine 等缓存（gitignored）
 Limine (UEFI)
   -> src/main.zig
   -> arch early init (GDT/IDT, CPU features, serial)
-  -> mm (HHDM, frame allocator, kernel address space, heap)
+  -> arch memory (HHDM, frame allocator, kernel address space, heap)
   -> sched (per-CPU, timer, idle thread)
   -> hal 接口绑定 (console, block)
   -> drivers (virtio-blk)
