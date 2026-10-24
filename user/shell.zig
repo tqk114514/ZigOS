@@ -53,7 +53,8 @@ fn readLine(console: u64, line: []u8) usize {
     var ch: [1]u8 = undefined;
     while (true) {
         const got = syscall3(sys_read, console, @intFromPtr(&ch), 1);
-        if (got != 1) exit(1);
+        if (got == error_value) exit(1);
+        if (got != 1) continue; // no byte yet: retry
         const c = ch[0];
         if (c == '\r') continue;
         if (c == '\n') {

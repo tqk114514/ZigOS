@@ -7,6 +7,7 @@ const spinlock = @import("spinlock.zig");
 
 const com1: u16 = 0x3f8;
 const max_spin: usize = 1_000_000;
+const read_timeout_spins: usize = 20_000_000;
 
 var lock: spinlock.Lock align(64) = .{};
 var read_lock: spinlock.Lock align(64) = .{};
@@ -37,19 +38,22 @@ fn writeByte(byte: u8) void {
     port.outb(com1, byte);
 }
 
-/// Blocks until at least one byte is received, then drains up to `buf.len`.
-/// Callers run in syscall context with interrupts masked.
+/// Waits a bounded number of polls for at least one byte, then drains up to
+/// `buf.len`. Returns 0 when no byte arrived; callers retry.
 pub fn read(buf: []u8) usize {
     if (buf.len == 0) return 0;
     const irq = read_lock.acquire();
     defer read_lock.release(irq);
 
     var done: usize = 0;
+    var spins: usize = 0;
     while (done == 0) {
         if ((port.inb(com1 + 5) & 0x01) != 0) {
             buf[0] = port.inb(com1);
             done = 1;
         } else {
+            spins += 1;
+            if (spins >= read_timeout_spins) return 0;
             cpu.pause();
         }
     }
