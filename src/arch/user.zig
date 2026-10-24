@@ -31,6 +31,12 @@ pub fn create() ?AddressSpace {
     return .{ .pml4 = pml4 };
 }
 
+/// Frees every user page, page table, and the PML4. The space must be
+/// inactive on all CPUs.
+pub fn destroy(space: AddressSpace) void {
+    paging.destroyUserSpace(space.pml4);
+}
+
 /// Maps one zeroed 4 KiB page at `virt`. W^X is enforced.
 pub fn mapUser(space: AddressSpace, virt: u64, writable: bool, executable: bool) ?u64 {
     if (writable and executable) return null;
@@ -103,7 +109,17 @@ pub fn runSmoke() bool {
     const console = serial.console;
     if (console_handle > 0xff) return false;
 
+    // Lifecycle: page tables and pages return to the frame pool.
+    const reclaim_before = frame.freeCount();
+    const temp = create() orelse return false;
+    var reclaim_ok = mapUser(temp, user_base, true, false) != null;
+    if (reclaim_ok) reclaim_ok = mapUser(temp, user_base + 0x2000, false, true) != null;
+    destroy(temp);
+    if (!reclaim_ok or frame.freeCount() != reclaim_before) return false;
+    console.write("USER: reclaim ok\n");
+
     const space = create() orelse return false;
+    defer destroy(space);
 
     if (mapUser(space, user_base, true, false) == null) return false;
     if (mapUser(space, user_base + 0x1000, false, false) == null) return false;
@@ -258,18 +274,26 @@ const StartupInfo = extern struct {
 /// a new address space and enters ring3. Returns the exit status.
 pub fn runShell(image: []const u8, console: u64) ?u64 {
     const space = create() orelse return null;
-    const entry = loadElf(space, image, shell_stack_base) orelse return null;
+    const entry = loadElf(space, image, shell_stack_base) orelse {
+        destroy(space);
+        return null;
+    };
 
     var top_phys: u64 = 0;
     var page: u64 = 0;
     while (page < shell_stack_pages) : (page += 1) {
-        top_phys = mapUser(space, shell_stack_base + page * 4096, true, false) orelse return null;
+        top_phys = mapUser(space, shell_stack_base + page * 4096, true, false) orelse {
+            destroy(space);
+            return null;
+        };
     }
     const startup: *StartupInfo = @ptrFromInt(paging.hhdmOffset() + top_phys + 4096 - @sizeOf(StartupInfo));
     startup.* = .{ .console = console, .reserved = 0 };
 
     const rsp = shell_stack_base + shell_stack_pages * 4096 - @sizeOf(StartupInfo);
-    return syscall.runUser(space, entry, rsp);
+    const status = syscall.runUser(space, entry, rsp);
+    destroy(space);
+    return status;
 }
 
 fn loadElf(space: AddressSpace, image: []const u8, limit: u64) ?u64 {
@@ -360,12 +384,24 @@ pub fn prepareUserSmp() bool {
     if (console_handle > 0xff) return false;
     const space = create() orelse return false;
     smp_space = space;
-    if (mapUser(space, user_stack, true, false) == null) return false;
-    if (mapUser(space, space_b_test, true, false) == null) return false;
-    const code_phys = mapUser(space, space_b_code, false, true) orelse return false;
+    if (mapUser(space, user_stack, true, false) == null) {
+        destroy(space);
+        return false;
+    }
+    if (mapUser(space, space_b_test, true, false) == null) {
+        destroy(space);
+        return false;
+    }
+    const code_phys = mapUser(space, space_b_code, false, true) orelse {
+        destroy(space);
+        return false;
+    };
 
     const hhdm = paging.hhdmOffset();
-    const test_pte = paging.pteIn(space.pml4, space_b_test) orelse return false;
+    const test_pte = paging.pteIn(space.pml4, space_b_test) orelse {
+        destroy(space);
+        return false;
+    };
     const test_page: [*]u8 = @ptrFromInt(hhdm + paging.physFromPte(test_pte));
     test_page[0] = 'A';
 
@@ -419,6 +455,8 @@ pub fn finishUserSmp() bool {
         cpu.pause();
     }
     if (@atomicLoad(u32, &smp_exit_ok, .acquire) == 0) return false;
+    destroy(smp_space);
+    smp_ready = false;
     serial.console.write("USER: space B remapped ok\n");
     return true;
 }

@@ -192,6 +192,15 @@ pub fn runUserShell(image: []const u8, console: u64) ?u64 {
     return user.runShell(image, console);
 }
 
+/// Frees a user space; it must be inactive on every CPU.
+pub fn destroyUserSpace(space: UserSpace) void {
+    user.destroy(space);
+}
+
+pub fn frameFreeCount() u64 {
+    return frame.freeCount();
+}
+
 pub fn runBench() bool {
     return bench.run();
 }

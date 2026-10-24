@@ -9,6 +9,7 @@ pub const flags_present: u64 = 1 << 0;
 pub const flags_rw: u64 = 1 << 1;
 pub const flags_user: u64 = 1 << 2;
 pub const flags_uc: u64 = 1 << 4; // PCD: MMIO must not be cached
+pub const flags_ps: u64 = 1 << 7; // large-page bit in non-leaf entries
 pub const flags_nx: u64 = 1 << 63;
 
 pub const mmio_window: u64 = 0xffff_c000_0000_0000;
@@ -163,6 +164,47 @@ pub fn copyKernelEntries(new_pml4: u64) bool {
     i = 256;
     while (i < 512) : (i += 1) dst[i] = src[i];
     return true;
+}
+
+/// Frees a user space built by mapPageIn(): every lower-half leaf and page
+/// table, then the PML4. The space must be inactive on all CPUs; the upper
+/// half holds shared kernel tables and is left untouched.
+pub fn destroyUserSpace(pml4_phys: u64) void {
+    const irq = lock.acquire();
+    defer lock.release(irq);
+
+    const pml4 = tablePtr(pml4_phys);
+    var pml4_index: usize = 0;
+    while (pml4_index < 256) : (pml4_index += 1) {
+        const e4 = pml4[pml4_index];
+        if ((e4 & flags_present) == 0) continue;
+        if ((e4 & flags_ps) != 0) continue; // large pages are never created here
+        const p3 = tablePtr(e4 & phys_mask);
+        var pdpt_index: usize = 0;
+        while (pdpt_index < 512) : (pdpt_index += 1) {
+            const e3 = p3[pdpt_index];
+            if ((e3 & flags_present) == 0) continue;
+            if ((e3 & flags_ps) != 0) continue;
+            const p2 = tablePtr(e3 & phys_mask);
+            var pd_index: usize = 0;
+            while (pd_index < 512) : (pd_index += 1) {
+                const e2 = p2[pd_index];
+                if ((e2 & flags_present) == 0) continue;
+                if ((e2 & flags_ps) != 0) continue;
+                const p1 = tablePtr(e2 & phys_mask);
+                var pt_index: usize = 0;
+                while (pt_index < 512) : (pt_index += 1) {
+                    const e1 = p1[pt_index];
+                    if ((e1 & flags_present) == 0) continue;
+                    frame.freeFrame(e1 & phys_mask);
+                }
+                frame.freeFrame(e2 & phys_mask);
+            }
+            frame.freeFrame(e3 & phys_mask);
+        }
+        frame.freeFrame(e4 & phys_mask);
+    }
+    frame.freeFrame(pml4_phys);
 }
 
 /// Allocates a zeroed frame and maps it RW/NX at `virt` in the kernel space.

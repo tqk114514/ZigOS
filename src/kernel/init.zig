@@ -164,10 +164,14 @@ pub fn main() noreturn {
     if (config.shell_smoke) {
         const image = arch.moduleImage("/shell.elf");
         var status: ?u64 = null;
+        var reclaimed = false;
         if (arch.initMemorySubsystems()) {
+            const frames_before = arch.frameFreeCount();
             if (image) |bytes| status = arch.runUserShell(bytes, syscall_dispatch.currentHandle());
+            reclaimed = arch.frameFreeCount() == frames_before;
         }
-        if (status != null and status.? == 0) {
+        if (reclaimed) console.write("SHELL: space reclaimed\n");
+        if (status != null and status.? == 0 and reclaimed) {
             console.write("SHELL OK\n");
             arch.qemuExit(0x26); // 77
         } else {

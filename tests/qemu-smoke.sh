@@ -258,6 +258,7 @@ echo "qemu-smoke: scheduler preemption OK"
 USER_LOG="$ROOT/zig-out/serial-user-smp4.log"
 if ! grep -a -q "USER: ring3 ok" "$USER_LOG" ||
    ! grep -a -q "USER: spin ok" "$USER_LOG" ||
+   ! grep -a -q "USER: reclaim ok" "$USER_LOG" ||
    ! grep -a -q "USER: preempt ticks" "$USER_LOG" ||
    ! grep -a -q "USER: space B remapped ok" "$USER_LOG"; then
     echo "qemu-smoke: user serial output missing the ring3/preemption evidence" >&2
@@ -279,9 +280,10 @@ if ! grep -a -q "ZigOS shell (M3)" "$SHELL_LOG" ||
    ! grep -a -q "ZigOS M3" "$SHELL_LOG" ||
    ! grep -a -q "hello from the packaged initramfs" "$SHELL_LOG" ||
    ! grep -a -q "not found" "$SHELL_LOG" ||
-   ! grep -a -q "sysfuzz ok" "$SHELL_LOG"; then
-    echo "qemu-smoke: shell serial output missing prompt, file contents, or sysfuzz" >&2
+   ! grep -a -q "sysfuzz ok" "$SHELL_LOG" ||
+   ! grep -a -q "SHELL: space reclaimed" "$SHELL_LOG"; then
+    echo "qemu-smoke: shell serial output missing prompt, file contents, sysfuzz, or reclamation" >&2
     tail -n 120 "$SHELL_LOG" 2>/dev/null || true
     exit 1
 fi
-echo "qemu-smoke: user shell and syscall fuzz OK"
+echo "qemu-smoke: user shell, syscall fuzz, and reclamation OK"
