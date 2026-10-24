@@ -2,7 +2,7 @@
 
 一个用 Zig 编写的模块化宏内核，第一目标平台是 QEMU/virt 上的 x86_64。
 
-当前状态：M2 已完成。M1 已完成（含内存压力测试与性能基准设施）；SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列、对象/句柄核心、用户地址空间与 copy_from_user/copy_to_user、syscall 入口、ring3 用户程序与用户态定时抢占已落地。M2 遗留已清空（ADR-0016/0017/0018：TLB shootdown、双地址空间、堆统计、syscall 句柄、每线程内核栈与 guard page、槽位回收）；M3 进行中：只读 VFS 与内存 initramfs 起步（平面命名空间、host 单测）；virtio-blk 与用户态 shell 未开始。
+当前状态：M2 已完成。M1 已完成（含内存压力测试与性能基准设施）；SMP 启动/per-CPU、IRQ 安全自旋锁与分配器加锁、抢占式调度器核心与 IPI、睡眠/唤醒与等待队列、对象/句柄核心、用户地址空间与 copy_from_user/copy_to_user、syscall 入口、ring3 用户程序与用户态定时抢占已落地。M2 遗留已清空（ADR-0016/0017/0018：TLB shootdown、双地址空间、堆统计、syscall 句柄、每线程内核栈与 guard page、槽位回收）；M3 进行中：只读 VFS 与打包 initramfs（Limine 模块加载、按需镜像）已落地；virtio-blk 与用户态 shell 未开始。
 
 ## 文档
 

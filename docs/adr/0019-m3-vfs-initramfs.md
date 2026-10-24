@@ -26,3 +26,9 @@ M3 需要 VFS、只读 initramfs、virtio-blk 与用户态 shell。当前没有�
 - **先写 tar/cpio 解析**：需要构建期打包与更多错误面，推迟到镜像产物增量。
 - **KVFS 直接暴露镜像字节**：把格式泄漏给上层，VFS 边界应从第一天存在。
 - **为 VFS 引入动态分配**：镜像只读且体积固定，顺序扫描足够。
+
+## 追加（2026-10-24）：构建期镜像产物
+
+- `tools/mkinitramfs.zig` 把仓库的 `initramfs/` 目录打包成本格式镜像（条目按路径排序，确定性输出）；因 Zig 0.17 的模块根目录限制，工具以仓库根的 `mkinitramfs.zig` 为模块入口，从 `tools/` 实现并复用 `src/fs/initramfs.zig` 的格式解析。
+- 镜像不进内核镜像，而是作为 **Limine 模块**加载（`module_path` 指向 ESP 上的 `initramfs.img`），内核经 module 请求以 HHDM 地址取得字节，`fs.init()` 后 `ready()` 校验格式；所有变体启动时打印 `INITRAMFS: <n> bytes ok`。
+- `zig build qemu-smoke` 依赖打包步骤，脚本把镜像放入 ESP 并断言该证据行；host 测试新增“打包→内核解析器往返”用例。
