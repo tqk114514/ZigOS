@@ -34,4 +34,4 @@ M3 的验收物是用户态 shell，把只读 VFS 暴露给 ring3 程序。现�
 
 - COM1 读改为有界轮询：超时返回 0，shell 重试，满足“硬件等待有超时”。
 - shell 增加固定种子的 `sysfuzz` 命令，覆盖非法 syscall 参数；测试策略见 ADR-0022。
-- 已知遗留：句柄表仍是内核全局；virtio 完成仍为轮询。地址空间与代码/栈帧的回收已由 [ADR-0023](0023-address-space-reclaim.md) 关闭；其余交给 v1 之后的进程与设备工作，不阻塞 M3 验收。
+- 已知遗留：virtio 完成仍为轮询。地址空间与代码/栈帧的回收已由 [ADR-0023](0023-address-space-reclaim.md) 关闭，句柄表已按进程隔离（[ADR-0024](0024-per-process-handles.md)）；其余交给 v1 之后的进程与设备工作，不阻塞 M3 验收。
