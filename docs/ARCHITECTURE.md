@@ -29,6 +29,7 @@ src/
   fs/               VFS、initramfs、块缓存、文件对象
   net/              网络栈（v2）
   drivers/          virtio-blk、virtio-net、console 等具体驱动
+user/               用户态程序（shell）与用户链接脚本；不属于内核依赖图
 boot/limine.conf    Limine 启动配置（M0）
 tests/              QEMU 集成测试与测试夹具（不属于内核依赖图）
 tools/              host 工具，如 check_deps
