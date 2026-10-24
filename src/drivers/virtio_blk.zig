@@ -211,6 +211,8 @@ fn mapBar(window: u64, bus: u8, dev: u8, func: u8, cap: Cap) ?u64 {
     const bar = cfgRead32(window, bus, dev, func, @as(u8, 0x10) + cap.bar * 4);
     if ((bar & 1) != 0) return null; // I/O BAR: legacy path, reject
     const mem_type = (bar >> 1) & 0x3;
+    if (mem_type == 0x1) return null; // reserved
+    if (mem_type == 0x2 and cap.bar >= 5) return null; // needs two BARs
     var phys: u64 = bar & 0xffff_fff0;
     if (mem_type == 0x2) {
         const high = cfgRead32(window, bus, dev, func, @as(u8, 0x10) + (cap.bar + 1) * 4);
@@ -294,7 +296,8 @@ pub fn init() bool {
 }
 
 /// Reads one sector into `buf`, which must be exactly one sector long.
-/// Completion is polled; interrupts are not used yet.
+/// Completion is polled; interrupts are not used yet. Callers serialize:
+/// one request is outstanding at a time.
 pub fn read(lba: u64, buf: []u8) bool {
     const q = if (queue) |*value| value else return false;
     if (buf.len != sector_size or lba >= capacity) return false;
