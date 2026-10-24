@@ -159,6 +159,7 @@ echo "qemu-smoke: SMP CPUs OK"
 SCHED_LOG="$ROOT/zig-out/serial-sched-smp4.log"
 if ! grep -a -q "SCHED: cpu 3 switches" "$SCHED_LOG" ||
    ! grep -a -q "SCHED: thread " "$SCHED_LOG" ||
+   ! grep -a -q "SCHED: guard pages ok" "$SCHED_LOG" ||
    ! grep -a -q "SCHED: sleep ok" "$SCHED_LOG" ||
    ! grep -a -q "SCHED: wake ok" "$SCHED_LOG" ||
    ! grep -a -q "TLB: shootdown ok" "$SCHED_LOG"; then

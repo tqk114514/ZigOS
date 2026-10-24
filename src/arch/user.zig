@@ -102,10 +102,6 @@ fn rangeOk(ptr: u64, len: usize) bool {
 pub fn runSmoke() bool {
     const console = serial.console;
     if (console_handle > 0xff) return false;
-    const hhdm = limine.hhdmOffset() orelse return false;
-    const memmap = limine.memmap() orelse return false;
-    frame.init(memmap);
-    paging.init(hhdm);
 
     const space = create() orelse return false;
 

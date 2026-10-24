@@ -8,6 +8,8 @@ const format = @import("../lib/interface.zig").format;
 
 const max_threads: usize = 24;
 const stack_size: usize = 16 * 1024;
+const stack_stride: u64 = 0x5000; // 4 KiB guard + 16 KiB stack
+const stack_window: u64 = 0xffff_d000_0000_0000;
 const idle_stack_size: usize = 4 * 1024;
 const quantum_ticks: u32 = 1;
 const worker_target: u64 = 200_000;
@@ -40,12 +42,13 @@ const Queue = struct {
     need_resched: bool = false,
     switches: u64 = 0,
     ready: u32 = 0, // atomic; set once this CPU's scheduler runs
+    reap: ?*Thread = null, // zombie to release on this CPU (queue lock)
 };
 
 // Boot-once state: each CPU touches only its own queue (under its lock) plus
 // the shared pool (under pool_lock). `ready` is the release/acquire handoff.
 var threads: [max_threads]Thread = defaultArray(Thread, max_threads);
-var stacks: [max_threads][stack_size]u8 align(16) = undefined;
+var stacks_mapped: bool = false;
 var idles: [arch.cpu_limit]Thread = defaultArray(Thread, arch.cpu_limit);
 var idle_stacks: [arch.cpu_limit][idle_stack_size]u8 align(16) = undefined;
 var queues: [arch.cpu_limit]Queue = defaultArray(Queue, arch.cpu_limit);
@@ -151,6 +154,21 @@ fn nullArray(comptime n: usize) [n]?*Thread {
 }
 
 /// Starts scheduling on the current CPU with the boot context as current.
+/// Maps the guarded per-thread stack window once (boot CPU).
+pub fn ensureStacks() bool {
+    if (stacks_mapped) return true;
+    var id: usize = 0;
+    while (id < max_threads) : (id += 1) {
+        var page: u64 = 0;
+        while (page < 4) : (page += 1) {
+            const virt = stack_window + id * stack_stride + 0x1000 + page * 0x1000;
+            if (!arch.mapKernelPage(virt)) return false;
+        }
+    }
+    stacks_mapped = true;
+    return true;
+}
+
 pub fn waitApReady() bool {
     const deadline = arch.rdtsc() + deadline_ticks;
     const self = arch.cpuIndex();
@@ -166,6 +184,7 @@ pub fn waitApReady() bool {
 }
 
 pub fn startKernelScheduler() bool {
+    if (!ensureStacks()) return false;
     const cpu = arch.cpuIndex();
     if (cpu >= arch.cpu_limit or !setupCpu(cpu)) return false;
     const boot = &threads[0];
@@ -263,6 +282,15 @@ fn setupCpu(cpu: usize) bool {
 /// Smoke: two compute workers per CPU plus a controller on the boot CPU.
 pub fn runSmoke() bool {
     const console = arch.serial_console;
+    if (!ensureStacks()) return false;
+    // Guard pages must stay unmapped; stack bottoms must be live.
+    var check: usize = 1;
+    while (check < max_threads) : (check += 1) {
+        const guard = stack_window + check * stack_stride;
+        if (arch.translateVirtual(guard) != null) return false;
+        if (arch.translateVirtual(guard + 0x1000) == null) return false;
+    }
+    console.write("SCHED: guard pages ok\n");
     const ncpus = arch.cpuCount();
     const boot_cpu = arch.cpuIndex();
     if (ncpus == 0 or ncpus > arch.cpu_limit) return false;
@@ -424,7 +452,7 @@ pub fn spawn(entry: *const fn () callconv(.c) void, cpu: usize) ?*Thread {
     t.cpu = cpu;
     t.counter = 0;
     t.done = 0;
-    prepareOn(t, @intFromPtr(&stacks[t.id]) + stack_size, entry);
+    prepareOn(t, @intCast(stackTop(t.id)), entry);
 
     const q = &queues[cpu];
     const irq = q.lock.acquire();
@@ -490,6 +518,10 @@ fn wakeDue() void {
     sleep_lock.release(irq);
 }
 
+fn stackTop(id: usize) u64 {
+    return stack_window + id * stack_stride + 0x1000 + stack_size;
+}
+
 fn enqueue(q: *Queue, t: *Thread) void {
     q.ring[(q.head + q.count) % max_threads] = t;
     q.count += 1;
@@ -514,11 +546,12 @@ fn threadTrampoline() callconv(.c) noreturn {
 }
 
 fn threadExit() noreturn {
-    // The slot intentionally stays reserved: this increment has no reclamation.
     const cpu = arch.cpuIndex();
     const q = &queues[cpu];
     const irq = q.lock.acquire();
     const prev = q.current;
+    // The stack is still in use until the switch away; idle reaps it later.
+    q.reap = prev;
     q.current = q.idle;
     @atomicStore(u64, &q.switches, @atomicLoad(u64, &q.switches, .monotonic) + 1, .monotonic);
     q.ticks_left = quantum_ticks;
@@ -530,9 +563,23 @@ fn threadExit() noreturn {
 fn idleLoop() callconv(.c) noreturn {
     arch.enableInterrupts();
     while (true) {
+        reapZombie(arch.cpuIndex());
         // SAFETY: idle with interrupts enabled; timer/IPI wake it.
         asm volatile ("hlt");
     }
+}
+
+fn reapZombie(cpu: usize) void {
+    const q = &queues[cpu];
+    const zombie = q.reap orelse return;
+    q.reap = null;
+    const pool_irq = pool_lock.acquire();
+    // Only the exited thread's slot is touched; its stack is off-CPU now.
+    if (zombie.entry != null) {
+        zombie.entry = null;
+        zombie.state = .free;
+    }
+    pool_lock.release(pool_irq);
 }
 
 fn workerEntry() callconv(.c) void {

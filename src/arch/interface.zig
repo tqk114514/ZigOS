@@ -5,6 +5,7 @@ const apic = @import("apic.zig");
 const context = @import("context.zig");
 const cpu = @import("cpu.zig");
 const limine = @import("limine.zig");
+const paging = @import("paging.zig");
 const percpu = @import("percpu.zig");
 const spinlock = @import("spinlock.zig");
 const backtrace = @import("backtrace.zig");
@@ -12,6 +13,7 @@ const bench = @import("bench.zig");
 const exceptions = @import("exceptions.zig");
 const extirq = @import("extirq.zig");
 const gdt = @import("gdt.zig");
+const frame = @import("frame.zig");
 const heap = @import("heap.zig");
 const memory = @import("memory.zig");
 const smp = @import("smp.zig");
@@ -84,6 +86,23 @@ pub fn currentUserSpace() ?UserSpace {
 
 pub fn copyFromUserSpace(space: UserSpace, dst: []u8, src: u64) bool {
     return syscall.copyFromUser(space, dst, src);
+}
+
+/// Frame allocator and paging for variants that never run the memory smoke.
+pub fn initMemorySubsystems() bool {
+    const hhdm = limine.hhdmOffset() orelse return false;
+    const memmap = limine.memmap() orelse return false;
+    frame.init(memmap);
+    paging.init(hhdm);
+    return true;
+}
+
+pub fn mapKernelPage(virt: u64) bool {
+    return paging.allocKernelPage(virt);
+}
+
+pub fn translateVirtual(virt: u64) ?u64 {
+    return paging.translate(virt);
 }
 
 pub fn heapStats() HeapStats {

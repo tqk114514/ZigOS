@@ -71,6 +71,11 @@ pub fn main() noreturn {
     }
 
     if (config.sched_smoke) {
+        if (!arch.initMemorySubsystems()) {
+            console.write("SCHED FAIL\n");
+            arch.qemuExit(0x1f); // 63
+            arch.halt();
+        }
         arch.setVectorHandler(arch.timer_vector, sched.onTimer);
         arch.setVectorHandler(arch.ipi_vector, sched.onIpi);
         arch.setPreemptHook(sched.preempt);
@@ -90,6 +95,11 @@ pub fn main() noreturn {
         arch.setVectorHandler(arch.ipi_vector, sched.onIpi);
         arch.setPreemptHook(sched.preempt);
         arch.setApHandler(sched.apEntry);
+        if (!arch.initMemorySubsystems()) {
+            console.write("USER FAIL\n");
+            arch.qemuExit(0x23); // 71
+            arch.halt();
+        }
         _ = arch.startAps();
         const started = sched.startKernelScheduler() and sched.waitApReady();
         const ticks_before = sched.ticksNow();

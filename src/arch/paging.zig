@@ -165,6 +165,15 @@ pub fn copyKernelEntries(new_pml4: u64) bool {
     return true;
 }
 
+/// Allocates a zeroed frame and maps it RW/NX at `virt` in the kernel space.
+pub fn allocKernelPage(virt: u64) bool {
+    const phys = frame.allocFrame() orelse return false;
+    // SAFETY: the frame is RAM reachable through the HHDM.
+    const page: [*]u8 = @ptrFromInt(hhdm + phys);
+    @memset(page[0..4096], 0);
+    return mapPage(virt, phys, flags_rw | flags_nx);
+}
+
 /// Installs a new PML4; returns the previous one. The kernel half must be
 /// shared (create() guarantees that).
 pub fn activate(pml4_phys: u64) u64 {
