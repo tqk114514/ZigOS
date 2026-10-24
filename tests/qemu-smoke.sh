@@ -281,9 +281,10 @@ if ! grep -a -q "ZigOS shell (M3)" "$SHELL_LOG" ||
    ! grep -a -q "hello from the packaged initramfs" "$SHELL_LOG" ||
    ! grep -a -q "not found" "$SHELL_LOG" ||
    ! grep -a -q "sysfuzz ok" "$SHELL_LOG" ||
+   ! grep -a -q "PROCESS: isolation ok" "$SHELL_LOG" ||
    ! grep -a -q "SHELL: space reclaimed" "$SHELL_LOG"; then
-    echo "qemu-smoke: shell serial output missing prompt, file contents, sysfuzz, or reclamation" >&2
+    echo "qemu-smoke: shell serial output missing prompt, file contents, sysfuzz, isolation, or reclamation" >&2
     tail -n 120 "$SHELL_LOG" 2>/dev/null || true
     exit 1
 fi
-echo "qemu-smoke: user shell, syscall fuzz, and reclamation OK"
+echo "qemu-smoke: user shell, syscall fuzz, process isolation, and reclamation OK"

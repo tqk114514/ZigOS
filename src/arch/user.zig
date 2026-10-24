@@ -271,29 +271,21 @@ const StartupInfo = extern struct {
 };
 
 /// Loads a freestanding ELF (ET_EXEC, page-aligned PT_LOAD segments, W^X) into
-/// a new address space and enters ring3. Returns the exit status.
-pub fn runShell(image: []const u8, console: u64) ?u64 {
-    const space = create() orelse return null;
-    const entry = loadElf(space, image, shell_stack_base) orelse {
-        destroy(space);
-        return null;
-    };
+/// `space`, maps the shell stack, and enters ring3. The caller owns the space
+/// and reclaims it after this returns.
+pub fn runShellIn(space: AddressSpace, image: []const u8, console: u64) ?u64 {
+    const entry = loadElf(space, image, shell_stack_base) orelse return null;
 
     var top_phys: u64 = 0;
     var page: u64 = 0;
     while (page < shell_stack_pages) : (page += 1) {
-        top_phys = mapUser(space, shell_stack_base + page * 4096, true, false) orelse {
-            destroy(space);
-            return null;
-        };
+        top_phys = mapUser(space, shell_stack_base + page * 4096, true, false) orelse return null;
     }
     const startup: *StartupInfo = @ptrFromInt(paging.hhdmOffset() + top_phys + 4096 - @sizeOf(StartupInfo));
     startup.* = .{ .console = console, .reserved = 0 };
 
     const rsp = shell_stack_base + shell_stack_pages * 4096 - @sizeOf(StartupInfo);
-    const status = syscall.runUser(space, entry, rsp);
-    destroy(space);
-    return status;
+    return syscall.runUser(space, entry, rsp);
 }
 
 fn loadElf(space: AddressSpace, image: []const u8, limit: u64) ?u64 {

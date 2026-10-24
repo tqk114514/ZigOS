@@ -187,9 +187,14 @@ pub fn runUserSmoke() bool {
     return user.runSmoke();
 }
 
-/// Loads a freestanding ELF into a fresh user space and runs it in ring3.
-pub fn runUserShell(image: []const u8, console: u64) ?u64 {
-    return user.runShell(image, console);
+/// Creates an empty user address space; the caller owns and destroys it.
+pub fn createUserSpace() ?UserSpace {
+    return user.create();
+}
+
+/// Loads and runs the shell image in `space`; the caller reclaims the space.
+pub fn runShellIn(space: UserSpace, image: []const u8, console: u64) ?u64 {
+    return user.runShellIn(space, image, console);
 }
 
 /// Frees a user space; it must be inactive on every CPU.

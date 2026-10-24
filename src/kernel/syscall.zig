@@ -1,21 +1,14 @@
-//! Kernel syscall dispatch. Handles resolve through the object layer; the
-//! console and file tables are kernel-wide for now and per-process tables
-//! arrive with the process work.
+//! Kernel syscall dispatch. Handles resolve through the calling process's
+//! table; file state comes from a kernel-wide bounded slot pool.
 
 const arch = @import("../arch/interface.zig");
 const fs = @import("../fs/interface.zig");
 const object = @import("../object/interface.zig");
-const panic = @import("panic.zig");
+const process = @import("process.zig");
 
-const kind_console: u8 = 2;
-const kind_file: u8 = 3;
 const error_value: u64 = ~@as(u64, 0);
 const max_path: usize = 64;
 const max_files: usize = 8;
-
-var console: object.Object = undefined;
-var table: object.HandleTable = .{};
-var console_handle: u64 = error_value;
 
 const FileSlot = struct {
     object: object.Object = undefined,
@@ -33,24 +26,7 @@ var file_slots: [max_files]FileSlot = emptySlots();
 var file_lock: arch.Lock align(64) = .{};
 
 pub fn init() void {
-    console = object.Object.init(kind_console, null);
-    const handle = table.insert(&console, object.Rights.read | object.Rights.write) orelse
-        panic.call("console handle insert failed", null);
-    console_handle = handle;
-    arch.setConsoleHandle(handle);
     arch.setSyscallDispatch(&dispatch);
-
-    // Boundary check: a removed handle must stop resolving.
-    const probe = table.insert(&console, object.Rights.read) orelse
-        panic.call("probe handle insert failed", null);
-    const alive = table.lookup(probe, object.Rights.read) != null;
-    _ = table.remove(probe);
-    const dead = table.lookup(probe, object.Rights.read) == null;
-    if (!alive or !dead) panic.call("handle table self-check failed", null);
-}
-
-pub fn currentHandle() u64 {
-    return console_handle;
 }
 
 fn dispatch(number: u64, a1: u64, a2: u64, a3: u64) u64 {
@@ -65,8 +41,9 @@ fn dispatch(number: u64, a1: u64, a2: u64, a3: u64) u64 {
 
 fn write(handle: u64, ptr: u64, len: u64) u64 {
     if (len > 4096) return error_value;
+    const table = process.table() orelse return error_value;
     const target = table.lookup(handle, object.Rights.write) orelse return error_value;
-    if (target.kind != kind_console) return error_value;
+    if (target.kind != process.kind_console) return error_value;
     const space = arch.currentUserSpace() orelse return error_value;
 
     var buf: [64]u8 = undefined;
@@ -83,6 +60,7 @@ fn write(handle: u64, ptr: u64, len: u64) u64 {
 fn open(path_ptr: u64, path_len: u64) u64 {
     if (path_len == 0 or path_len > max_path) return error_value;
     const space = arch.currentUserSpace() orelse return error_value;
+    const table = process.table() orelse return error_value;
     var path: [max_path]u8 = undefined;
     const len: usize = @intCast(path_len);
     if (!arch.copyFromUserSpace(space, path[0..len], path_ptr)) return error_value;
@@ -94,7 +72,7 @@ fn open(path_ptr: u64, path_len: u64) u64 {
         if (slot.used) continue;
         slot.used = true;
         slot.file = file;
-        slot.object = object.Object.init(kind_file, &destroyFile);
+        slot.object = object.Object.init(process.kind_file, &destroyFile);
         free = slot;
         break;
     }
@@ -111,10 +89,11 @@ fn open(path_ptr: u64, path_len: u64) u64 {
 
 fn read(handle: u64, ptr: u64, len: u64) u64 {
     if (len == 0 or len > 4096) return error_value;
+    const table = process.table() orelse return error_value;
     const target = table.lookup(handle, object.Rights.read) orelse return error_value;
     const space = arch.currentUserSpace() orelse return error_value;
-    if (target.kind == kind_console) return readConsole(space, ptr, len);
-    if (target.kind != kind_file) return error_value;
+    if (target.kind == process.kind_console) return readConsole(space, ptr, len);
+    if (target.kind != process.kind_file) return error_value;
 
     const slot: *FileSlot = @fieldParentPtr("object", target);
     target.acquire();
@@ -140,6 +119,7 @@ fn readConsole(space: arch.UserSpace, ptr: u64, len: u64) u64 {
 }
 
 fn close(handle: u64) u64 {
+    const table = process.table() orelse return error_value;
     if (table.lookup(handle, object.Rights.manage) == null) return error_value;
     if (!table.remove(handle)) return error_value;
     return 0;

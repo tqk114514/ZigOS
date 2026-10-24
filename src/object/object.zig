@@ -109,6 +109,23 @@ pub const HandleTable = struct {
         }
         return false;
     }
+
+    /// Removes every entry, releasing references outside the table lock.
+    pub fn drain(self: *HandleTable) void {
+        const irq = self.lock.acquire();
+        var released: [capacity]*Object = undefined;
+        var count: usize = 0;
+        for (&self.entries) |*e| {
+            if (!e.occupied) continue;
+            e.occupied = false;
+            e.generation +%= 1;
+            released[count] = e.object;
+            count += 1;
+        }
+        self.lock.release(irq);
+        var i: usize = 0;
+        while (i < count) : (i += 1) released[i].release();
+    }
 };
 
 const kind_test: u8 = 1;
@@ -151,6 +168,18 @@ pub fn runSmoke() bool {
     console.write("OBJECT: handles ok\n");
     console.write("OBJECT: rights ok\n");
 
+    // Draining a table releases every reference exactly once.
+    var drained = Object.init(kind_test, &destroyTest);
+    var table_drain: HandleTable = .{};
+    const d1 = table_drain.insert(&drained, Rights.read) orelse return false;
+    _ = table_drain.insert(&drained, Rights.write) orelse return false;
+    table_drain.drain();
+    if (table_drain.lookup(d1, Rights.read) != null) return false;
+    if (drained.refCount() != 1) return false;
+    drained.release();
+    if (destroys != 2) return false;
+    console.write("OBJECT: drain ok\n");
+
     // Capacity: the 65th insert must fail and refounds must balance.
     var big = Object.init(kind_test, &destroyTest);
     var full: HandleTable = .{};
@@ -165,7 +194,7 @@ pub fn runSmoke() bool {
     }
     if (big.refCount() != 1) return false;
     big.release();
-    if (destroys != 2) return false;
+    if (destroys != 3) return false;
     console.write("OBJECT: refcount ok\n");
     console.write("OBJECT: capacity ok\n");
     return true;

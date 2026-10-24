@@ -3,6 +3,7 @@ const format = @import("../lib/interface.zig").format;
 const drivers = @import("../drivers/interface.zig");
 const fs = @import("../fs/interface.zig");
 const object = @import("../object/interface.zig");
+const process = @import("process.zig");
 const syscall_dispatch = @import("syscall.zig");
 const sched = @import("../sched/interface.zig");
 const config = @import("config");
@@ -29,6 +30,7 @@ pub fn main() noreturn {
     arch.initGdt();
     arch.initIdt();
     arch.initSyscall();
+    process.init();
     syscall_dispatch.init();
     arch.initTlb();
 
@@ -118,7 +120,9 @@ pub fn main() noreturn {
         const started = sched.startKernelScheduler() and sched.waitApReady();
         const ticks_before = sched.ticksNow();
         const switches_before = sched.switchesNow();
-        const ok = started and arch.runUserSmoke();
+        const test_proc = process.beginTest();
+        const ok = started and test_proc != null and arch.runUserSmoke();
+        if (test_proc) |proc| process.endTest(proc);
         const preemptions = sched.ticksNow() - ticks_before;
         const switches = sched.switchesNow() - switches_before;
 
@@ -166,9 +170,13 @@ pub fn main() noreturn {
         var status: ?u64 = null;
         var reclaimed = false;
         if (arch.initMemorySubsystems()) {
+            const isolated = process.runSelfCheck();
+            if (isolated) console.write("PROCESS: isolation ok\n");
             const frames_before = arch.frameFreeCount();
-            if (image) |bytes| status = arch.runUserShell(bytes, syscall_dispatch.currentHandle());
-            reclaimed = arch.frameFreeCount() == frames_before;
+            if (isolated) {
+                if (image) |bytes| status = process.runShell(bytes);
+            }
+            reclaimed = isolated and arch.frameFreeCount() == frames_before;
         }
         if (reclaimed) console.write("SHELL: space reclaimed\n");
         if (status != null and status.? == 0 and reclaimed) {
@@ -222,6 +230,8 @@ pub fn main() noreturn {
 }
 
 fn userSmpThread() callconv(.c) void {
+    const proc = process.beginTest() orelse return;
+    defer process.endTest(proc);
     _ = arch.runUserSmpThread();
 }
 
