@@ -88,6 +88,29 @@ pub fn build(b: *std.Build) void {
     const fs_tests = b.addTest(.{ .root_module = fs_test_mod });
     const run_fs_tests = b.addRunArtifact(fs_tests);
 
+    // Freestanding user program: linked at 0x400000, delivered as a module.
+    const shell_target = b.resolveTargetQuery(.{
+        .cpu_arch = .x86_64,
+        .os_tag = .freestanding,
+    });
+    const shell_mod = b.createModule(.{
+        .root_source_file = b.path("user/shell.zig"),
+        .target = shell_target,
+        .optimize = .ReleaseSafe,
+        .pic = false,
+        .red_zone = false,
+        .stack_check = false,
+        .stack_protector = false,
+    });
+    const shell_exe = b.addExecutable(.{ .name = "shell", .root_module = shell_mod });
+    shell_exe.use_llvm = true;
+    shell_exe.use_lld = true;
+    shell_exe.setLinkerScript(b.path("user/linker.ld"));
+    shell_exe.entry = .{ .symbol_name = "_start" };
+    const install_shell = b.addInstallArtifact(shell_exe, .{ .dest_sub_path = "shell.elf" });
+    const shell_step = b.step("shell", "Build the user-mode shell ELF");
+    shell_step.dependOn(&install_shell.step);
+
     const test_step = b.step("test", "Run host tests");
     test_step.dependOn(&run_check_tests.step);
     test_step.dependOn(&run_format_tests.step);
@@ -115,6 +138,7 @@ pub fn build(b: *std.Build) void {
     const object_kernel = addKernel(b, kernel_target, optimize, "kernel-object", .{ .object_smoke = true });
     const user_kernel = addKernel(b, kernel_target, optimize, "kernel-user", .{ .user_smoke = true });
     const blk_kernel = addKernel(b, kernel_target, optimize, "kernel-blk", .{ .blk_smoke = true });
+    const shell_kernel = addKernel(b, kernel_target, optimize, "kernel-shell", .{ .shell_smoke = true });
 
     const install_kernel = b.addInstallArtifact(kernel, .{ .dest_sub_path = "kernel.elf" });
     const install_panic_kernel = b.addInstallArtifact(panic_kernel, .{ .dest_sub_path = "kernel-panic.elf" });
@@ -129,6 +153,7 @@ pub fn build(b: *std.Build) void {
     const install_object_kernel = b.addInstallArtifact(object_kernel, .{ .dest_sub_path = "kernel-object.elf" });
     const install_user_kernel = b.addInstallArtifact(user_kernel, .{ .dest_sub_path = "kernel-user.elf" });
     const install_blk_kernel = b.addInstallArtifact(blk_kernel, .{ .dest_sub_path = "kernel-blk.elf" });
+    const install_shell_kernel = b.addInstallArtifact(shell_kernel, .{ .dest_sub_path = "kernel-shell.elf" });
 
     const kernel_step = b.step("kernel", "Build the freestanding kernel");
     kernel_step.dependOn(&install_kernel.step);
@@ -169,6 +194,9 @@ pub fn build(b: *std.Build) void {
     const blk_kernel_step = b.step("kernel-blk", "Build the kernel with the virtio-blk smoke path");
     blk_kernel_step.dependOn(&install_blk_kernel.step);
 
+    const shell_kernel_step = b.step("kernel-shell", "Build the kernel with the user-shell smoke path");
+    shell_kernel_step.dependOn(&install_shell_kernel.step);
+
     const smoke_cmd = b.addSystemCommand(&.{ "bash", "tests/qemu-smoke.sh" });
     smoke_cmd.setCwd(b.path("."));
     smoke_cmd.step.dependOn(&install_kernel.step);
@@ -183,6 +211,8 @@ pub fn build(b: *std.Build) void {
     smoke_cmd.step.dependOn(&install_object_kernel.step);
     smoke_cmd.step.dependOn(&install_user_kernel.step);
     smoke_cmd.step.dependOn(&install_blk_kernel.step);
+    smoke_cmd.step.dependOn(&install_shell_kernel.step);
+    smoke_cmd.step.dependOn(&install_shell.step);
     smoke_cmd.step.dependOn(&pack_initramfs.step);
 
     const smoke_step = b.step("qemu-smoke", "Boot the kernel smoke variants in QEMU");
@@ -219,6 +249,7 @@ const SmokeOptions = struct {
     object_smoke: bool = false,
     user_smoke: bool = false,
     blk_smoke: bool = false,
+    shell_smoke: bool = false,
 };
 
 fn addKernel(
@@ -241,6 +272,7 @@ fn addKernel(
     options.addOption(bool, "object_smoke", smoke.object_smoke);
     options.addOption(bool, "user_smoke", smoke.user_smoke);
     options.addOption(bool, "blk_smoke", smoke.blk_smoke);
+    options.addOption(bool, "shell_smoke", smoke.shell_smoke);
 
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),

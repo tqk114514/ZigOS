@@ -16,6 +16,9 @@ const fmask_msr = 0xc0000084;
 pub const number_exit: u64 = 0;
 pub const number_write: u64 = 1;
 pub const number_yield: u64 = 2;
+pub const number_open: u64 = 3;
+pub const number_read: u64 = 4;
+pub const number_close: u64 = 5;
 
 pub const error_value: u64 = ~@as(u64, 0);
 
@@ -28,6 +31,9 @@ pub const Frame = extern struct {
     number: u64,
     rip: u64,
     rflags: u64,
+    r8: u64,
+    r9: u64,
+    r10: u64,
     user_rsp: u64,
 };
 
@@ -96,9 +102,9 @@ pub fn resetExit() void {
 
 export fn syscallHandler(frame: *Frame) callconv(.c) u64 {
     switch (frame.number) {
-        number_write => {
+        number_write, number_open, number_read, number_close => {
             const handler = dispatch_hook orelse return error_value;
-            return handler(number_write, frame.a1, frame.a2, frame.a3);
+            return handler(frame.number, frame.a1, frame.a2, frame.a3);
         },
         number_yield => return 0, // preemption already covers it
         number_exit => exitUser(frame.a1),
@@ -109,4 +115,9 @@ export fn syscallHandler(frame: *Frame) callconv(.c) u64 {
 /// Copies from a user pointer of the given space (for the dispatch hook).
 pub fn copyFromUser(space: user.AddressSpace, dst: []u8, src: u64) bool {
     return user.copyFromUser(space, dst, src);
+}
+
+/// Copies to a user pointer of the given space (for the dispatch hook).
+pub fn copyToUser(space: user.AddressSpace, dst: u64, src: []const u8) bool {
+    return user.copyToUser(space, dst, src);
 }

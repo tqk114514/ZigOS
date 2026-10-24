@@ -90,4 +90,5 @@ stage_esp() {
     cp "$LIMINE_DIR/BOOTX64.EFI" "$ESP/EFI/BOOT/BOOTX64.EFI"
     cp "$BOOT_CONF" "$ESP/EFI/BOOT/limine.conf"
     cp "$ROOT/zig-out/initramfs.img" "$ESP/initramfs.img"
+    cp "$ROOT/zig-out/bin/shell.elf" "$ESP/shell.elf"
 }

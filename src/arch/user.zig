@@ -242,6 +242,105 @@ fn buildProgram() [program_len]u8 {
     return out;
 }
 
+// ---- User-mode shell: minimal ELF64 loader and startup ABI ----
+
+const shell_stack_pages: u64 = 2;
+const shell_stack_base: u64 = user_base + 0x10_0000;
+
+/// Startup ABI: %rsp points at this struct on entry; other registers are zero.
+const StartupInfo = extern struct {
+    console: u64,
+    reserved: u64,
+};
+
+/// Loads a freestanding ELF (ET_EXEC, page-aligned PT_LOAD segments, W^X) into
+/// a new address space and enters ring3. Returns the exit status.
+pub fn runShell(image: []const u8, console: u64) ?u64 {
+    const space = create() orelse return null;
+    const entry = loadElf(space, image, shell_stack_base) orelse return null;
+
+    var top_phys: u64 = 0;
+    var page: u64 = 0;
+    while (page < shell_stack_pages) : (page += 1) {
+        top_phys = mapUser(space, shell_stack_base + page * 4096, true, false) orelse return null;
+    }
+    const startup: *StartupInfo = @ptrFromInt(paging.hhdmOffset() + top_phys + 4096 - @sizeOf(StartupInfo));
+    startup.* = .{ .console = console, .reserved = 0 };
+
+    const rsp = shell_stack_base + shell_stack_pages * 4096 - @sizeOf(StartupInfo);
+    return syscall.runUser(space, entry, rsp);
+}
+
+fn loadElf(space: AddressSpace, image: []const u8, limit: u64) ?u64 {
+    if (image.len < 64) return null;
+    if (!(image[0] == 0x7f and image[1] == 'E' and image[2] == 'L' and image[3] == 'F')) return null;
+    if (image[4] != 2 or image[5] != 1) return null; // 64-bit, little-endian
+    if (read16(image, 16) != 2 or read16(image, 18) != 0x3e) return null; // ET_EXEC, x86_64
+
+    const entry = read64(image, 24);
+    const phoff = read64(image, 32);
+    const ehsize = read16(image, 52);
+    const phentsize = read16(image, 54);
+    const phnum = read16(image, 56);
+    if (ehsize < 64 or phentsize < 56 or phnum == 0 or phnum > 16) return null;
+    if (phoff > image.len) return null;
+    const ph_end = phoff + @as(u64, phentsize) * phnum;
+    if (ph_end > image.len) return null;
+
+    var loaded_end: u64 = 0;
+    var entry_ok = false;
+    var index: u16 = 0;
+    while (index < phnum) : (index += 1) {
+        const ph: usize = @intCast(phoff + @as(u64, index) * phentsize);
+        if (read32(image, ph) != 1) continue; // PT_LOAD
+        const flags = read32(image, ph + 4);
+        const offset = read64(image, ph + 8);
+        const vaddr = read64(image, ph + 16);
+        const filesz = read64(image, ph + 32);
+        const memsz = read64(image, ph + 40);
+
+        const writable = (flags & 2) != 0;
+        const executable = (flags & 1) != 0;
+        if (writable and executable) return null;
+        if (filesz > memsz or offset > image.len or filesz > image.len - offset) return null;
+        if (vaddr < user_base or (vaddr & 0xfff) != 0 or (offset & 0xfff) != 0) return null;
+        if (vaddr >= user_limit or memsz > user_limit - vaddr) return null;
+        if (vaddr + memsz > limit) return null;
+        if (vaddr < loaded_end) return null;
+        if (memsz == 0) continue;
+
+        var page_offset: u64 = 0;
+        while (page_offset < memsz) : (page_offset += 4096) {
+            const virt = vaddr + page_offset;
+            const phys = mapUser(space, virt, writable, executable) orelse return null;
+            const dst: [*]u8 = @ptrFromInt(paging.hhdmOffset() + phys);
+            if (page_offset < filesz) {
+                const chunk: usize = @intCast(@min(filesz - page_offset, 4096));
+                @memcpy(dst[0..chunk], image[@intCast(offset + page_offset)..][0..chunk]);
+            }
+        }
+        if (executable and entry >= vaddr and entry < vaddr + memsz) entry_ok = true;
+        loaded_end = vaddr + memsz;
+    }
+    if (!entry_ok) return null;
+    return entry;
+}
+
+fn read16(bytes: []const u8, offset: usize) u16 {
+    return @as(u16, bytes[offset]) | (@as(u16, bytes[offset + 1]) << 8);
+}
+
+fn read32(bytes: []const u8, offset: usize) u32 {
+    return @as(u32, bytes[offset]) |
+        (@as(u32, bytes[offset + 1]) << 8) |
+        (@as(u32, bytes[offset + 2]) << 16) |
+        (@as(u32, bytes[offset + 3]) << 24);
+}
+
+fn read64(bytes: []const u8, offset: usize) u64 {
+    return @as(u64, read32(bytes, offset)) | (@as(u64, read32(bytes, offset + 4)) << 32);
+}
+
 // ---- A2: a second address space and a user thread on another CPU ----
 
 const space_b_test: u64 = user_base + 0x5000;

@@ -29,6 +29,10 @@ pub const HeapStats = heap.Stats;
 pub const Ecam = acpi.Ecam;
 pub const UserSpace = user.AddressSpace;
 pub const SyscallDispatch = syscall.Dispatch;
+pub const syscall_write: u64 = syscall.number_write;
+pub const syscall_open: u64 = syscall.number_open;
+pub const syscall_read: u64 = syscall.number_read;
+pub const syscall_close: u64 = syscall.number_close;
 pub const VectorHandler = exceptions.VectorHandler;
 pub const cpu_limit: usize = percpu.max_cpus;
 pub const timer_vector: u8 = @intCast(exceptions.timer_vector);
@@ -88,6 +92,15 @@ pub fn currentUserSpace() ?UserSpace {
 
 pub fn copyFromUserSpace(space: UserSpace, dst: []u8, src: u64) bool {
     return syscall.copyFromUser(space, dst, src);
+}
+
+pub fn copyToUserSpace(space: UserSpace, dst: u64, src: []const u8) bool {
+    return syscall.copyToUser(space, dst, src);
+}
+
+/// Blocks until at least one byte is available on COM1.
+pub fn readSerial(buf: []u8) usize {
+    return serial.read(buf);
 }
 
 /// Frame allocator and paging for variants that never run the memory smoke.
@@ -172,6 +185,11 @@ pub fn finishUserSmp() bool {
 
 pub fn runUserSmoke() bool {
     return user.runSmoke();
+}
+
+/// Loads a freestanding ELF into a fresh user space and runs it in ring3.
+pub fn runUserShell(image: []const u8, console: u64) ?u64 {
+    return user.runShell(image, console);
 }
 
 pub fn runBench() bool {

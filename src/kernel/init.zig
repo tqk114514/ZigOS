@@ -161,6 +161,22 @@ pub fn main() noreturn {
         arch.halt();
     }
 
+    if (config.shell_smoke) {
+        const image = arch.moduleImage("/shell.elf");
+        var status: ?u64 = null;
+        if (arch.initMemorySubsystems()) {
+            if (image) |bytes| status = arch.runUserShell(bytes, syscall_dispatch.currentHandle());
+        }
+        if (status != null and status.? == 0) {
+            console.write("SHELL OK\n");
+            arch.qemuExit(0x26); // 77
+        } else {
+            console.write("SHELL FAIL\n");
+            arch.qemuExit(0x27); // 79
+        }
+        arch.halt();
+    }
+
     if (config.object_smoke) {
         if (object.runSmoke()) {
             console.write("OBJECT OK\n");

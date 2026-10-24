@@ -19,6 +19,7 @@ SCHED_KERNEL="$ROOT/zig-out/bin/kernel-sched.elf"
 OBJECT_KERNEL="$ROOT/zig-out/bin/kernel-object.elf"
 USER_KERNEL="$ROOT/zig-out/bin/kernel-user.elf"
 BLK_KERNEL="$ROOT/zig-out/bin/kernel-blk.elf"
+SHELL_KERNEL="$ROOT/zig-out/bin/kernel-shell.elf"
 ACCEL="${QEMU_ACCEL:-tcg}"
 
 check_kernel() {
@@ -40,6 +41,8 @@ check_kernel "$SCHED_KERNEL" kernel-sched
 check_kernel "$OBJECT_KERNEL" kernel-object
 check_kernel "$USER_KERNEL" kernel-user
 check_kernel "$BLK_KERNEL" kernel-blk
+check_kernel "$SHELL_KERNEL" kernel-shell
+check_kernel "$ROOT/zig-out/bin/shell.elf" shell
 
 # shellcheck source=tests/qemu-env.sh
 source "$ROOT/tests/qemu-env.sh"
@@ -95,6 +98,73 @@ run_boot() {
     echo "qemu-smoke: $label smp=$smp OK (exit $code)"
 }
 
+run_shell_boot() {
+    local smp="$1"
+    local log="$ROOT/zig-out/serial-shell.log"
+    if [[ "$smp" != "1" ]]; then
+        log="$ROOT/zig-out/serial-shell-smp$smp.log"
+    fi
+
+    cp "$SHELL_KERNEL" "$ESP/kernel.elf"
+    rm -f "$log"
+
+    # COM1 input is fed line by line once each prompt is visible, one byte at
+    # a time; bursts overrun the UART receive FIFO.
+    local code=0
+    set +e
+    (
+        local -a commands=("cat /etc/motd" "cat /hello.txt" "cat /missing" "exit")
+        local index=0
+        while [[ "$index" -lt "${#commands[@]}" ]]; do
+            local target=$((index + 1))
+            local tries=0
+            while [[ "$tries" -lt 600 ]]; do
+                local seen
+                seen=$(grep -a -c "shell> " "$log" 2>/dev/null || true)
+                [[ "${seen:-0}" -ge "$target" ]] && break
+                sleep 0.1
+                tries=$((tries + 1))
+            done
+            local text="${commands[$index]}"
+            local char=0
+            while [[ "$char" -lt "${#text}" ]]; do
+                printf '%s' "${text:$char:1}"
+                sleep 0.03
+                char=$((char + 1))
+            done
+            sleep 0.1
+            printf '\n'
+            sleep 0.2
+            index=$((index + 1))
+        done
+    ) | timeout 120 "$QEMU_BIN" \
+        -M q35 \
+        -m 512M \
+        -smp "$smp" \
+        -cpu "${QEMU_CPU:-max}" \
+        -accel "$ACCEL" \
+        "${FW_ARGS[@]}" \
+        -drive "file=fat:rw:$(to_qemu_path "$ESP"),format=raw" \
+        -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
+        -serial stdio \
+        -display none -monitor none -no-reboot \
+        -boot order=c > "$log" 2>&1
+    code=$?
+    set -e
+
+    if [[ "$code" -ne 77 ]]; then
+        echo "qemu-smoke: shell exited $code, expected 77" >&2
+        tail -n 120 "$log" 2>/dev/null || true
+        exit 1
+    fi
+    if ! grep -a -q "SHELL OK" "$log"; then
+        echo "qemu-smoke: shell serial output missing 'SHELL OK'" >&2
+        tail -n 120 "$log" 2>/dev/null || true
+        exit 1
+    fi
+    echo "qemu-smoke: shell smp=$smp OK (exit $code)"
+}
+
 for smp in 1 4; do
     run_boot "$KERNEL" 33 "ZigOS M1 OK" normal "$smp"
     run_boot "$PANIC_KERNEL" 35 "PANIC: index out of bounds" panic "$smp"
@@ -108,6 +178,7 @@ for smp in 1 4; do
     run_boot "$OBJECT_KERNEL" 65 "OBJECT OK" object "$smp"
     run_boot "$USER_KERNEL" 69 "USER OK" user "$smp"
     run_boot "$BLK_KERNEL" 73 "BLK OK" blk "$smp" "-drive file=$(to_qemu_path "$BLK_IMAGE"),if=virtio,format=raw"
+    run_shell_boot "$smp"
 done
 
 PANIC_LOG="$ROOT/zig-out/serial-panic.log"
@@ -202,3 +273,14 @@ if ! grep -a -q "BLK: pci 1af4:" "$ROOT/zig-out/serial-blk-smp4.log" ||
     exit 1
 fi
 echo "qemu-smoke: virtio-blk discovery and read OK"
+
+SHELL_LOG="$ROOT/zig-out/serial-shell-smp4.log"
+if ! grep -a -q "ZigOS shell (M3)" "$SHELL_LOG" ||
+   ! grep -a -q "ZigOS M3" "$SHELL_LOG" ||
+   ! grep -a -q "hello from the packaged initramfs" "$SHELL_LOG" ||
+   ! grep -a -q "not found" "$SHELL_LOG"; then
+    echo "qemu-smoke: shell serial output missing prompt or file contents" >&2
+    tail -n 120 "$SHELL_LOG" 2>/dev/null || true
+    exit 1
+fi
+echo "qemu-smoke: user shell OK"
