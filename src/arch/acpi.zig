@@ -23,16 +23,25 @@ pub const Iso = struct {
     flags: u16, // MPS INTI flags: bits 0-1 polarity, bits 2-3 trigger
 };
 
+pub const Ecam = struct {
+    base: u64,
+    start_bus: u8,
+    end_bus: u8,
+};
+
 // Boot-once state; written by load(), read-only afterwards.
 var ioapic_entry: ?Ioapic = null;
 var isos: [max_isos]Iso = undefined;
 var iso_count: usize = 0;
+var ecam_entry: ?Ecam = null;
 
-/// Locates and parses the MADT. Returns false when the RSDP/XSDT/MADT chain is
-/// missing, malformed, or fails a checksum.
+/// Locates and parses the MADT and, when present, the MCFG. Returns false when
+/// the RSDP/XSDT chain is missing or malformed, a wanted table fails its
+/// checksum, or neither table was found.
 pub fn load(rsdp_addr: u64, hhdm: u64) bool {
     ioapic_entry = null;
     iso_count = 0;
+    ecam_entry = null;
 
     const rsdp_head = bytesAt(rsdp_addr, 24);
     if (!eq(rsdp_head[0..8], "RSD PTR ")) return false;
@@ -53,19 +62,48 @@ pub fn load(rsdp_addr: u64, hhdm: u64) bool {
     const xsdt = bytesAt(hhdm + xsdt_phys, xsdt_len);
     if (!eq(xsdt[0..4], "XSDT") or !checksumOk(xsdt)) return false;
 
+    var found_madt = false;
     var offset: usize = table_header_size;
     while (offset + 8 <= xsdt_len) : (offset += 8) {
-        const madt_phys = readU64(xsdt, offset);
-        if (madt_phys == 0) continue;
-        const madt_head = bytesAt(hhdm + madt_phys, 8);
-        if (!eq(madt_head[0..4], "APIC")) continue;
-        const madt_len = readU32(madt_head, 4);
-        if (madt_len < madt_header_size or madt_len > max_table_size) return false;
-        const madt = bytesAt(hhdm + madt_phys, madt_len);
-        if (!checksumOk(madt)) return false;
-        return parseMadt(madt);
+        const table_phys = readU64(xsdt, offset);
+        if (table_phys == 0) continue;
+        const head = bytesAt(hhdm + table_phys, 8);
+        const len = readU32(head, 4);
+        if (eq(head[0..4], "APIC")) {
+            if (len < madt_header_size or len > max_table_size) return false;
+            const madt = bytesAt(hhdm + table_phys, len);
+            if (!checksumOk(madt)) return false;
+            if (!parseMadt(madt)) return false;
+            found_madt = true;
+        } else if (eq(head[0..4], "MCFG")) {
+            if (len < table_header_size + 8 + 16 or len > max_table_size) return false;
+            const mcfg = bytesAt(hhdm + table_phys, len);
+            if (!checksumOk(mcfg)) return false;
+            parseMcfg(mcfg);
+        }
     }
-    return false;
+    return found_madt or ecam_entry != null;
+}
+
+/// PCIe ECAM window from the MCFG allocation structure (first entry). The
+/// structure follows an 8-byte reserved field, so it starts at offset 44:
+/// base(8), segment(2), start_bus(1), end_bus(1), reserved(4). Only segment 0
+/// is accepted; config address calculation is segment-relative.
+fn parseMcfg(bytes: []const u8) void {
+    const entry = table_header_size + 8;
+    if (readU16(bytes, entry + 8) != 0) return;
+    const start_bus = bytes[entry + 10];
+    const end_bus = bytes[entry + 11];
+    if (start_bus > end_bus) return;
+    ecam_entry = .{
+        .base = readU64(bytes, entry),
+        .start_bus = start_bus,
+        .end_bus = end_bus,
+    };
+}
+
+pub fn ecam() ?Ecam {
+    return ecam_entry;
 }
 
 pub fn ioapic() ?Ioapic {

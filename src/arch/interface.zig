@@ -1,6 +1,7 @@
 const hal = @import("../hal/interface.zig");
 const port = @import("port.zig");
 const serial = @import("serial.zig");
+const acpi = @import("acpi.zig");
 const apic = @import("apic.zig");
 const context = @import("context.zig");
 const cpu = @import("cpu.zig");
@@ -25,6 +26,7 @@ const user = @import("user.zig");
 pub const serial_console = serial.console;
 pub const Lock = spinlock.Lock;
 pub const HeapStats = heap.Stats;
+pub const Ecam = acpi.Ecam;
 pub const UserSpace = user.AddressSpace;
 pub const SyscallDispatch = syscall.Dispatch;
 pub const VectorHandler = exceptions.VectorHandler;
@@ -95,6 +97,26 @@ pub fn initMemorySubsystems() bool {
     frame.init(memmap);
     paging.init(hhdm);
     return true;
+}
+
+pub fn initAcpi() bool {
+    const hhdm = limine.hhdmOffset() orelse return false;
+    const rsdp = limine.rsdp() orelse return false;
+    return acpi.load(rsdp, hhdm);
+}
+
+pub fn ecam() ?Ecam {
+    return acpi.ecam();
+}
+
+pub fn mapMmioPages(phys: u64, len: usize) ?u64 {
+    if (len == 0) return null;
+    const base = paging.mapMmioPage(phys) orelse return null;
+    var offset: usize = 0;
+    while (offset < len) : (offset += 4096) {
+        _ = paging.mapMmioPage(phys + offset) orelse return null;
+    }
+    return base;
 }
 
 pub fn moduleImage(suffix: []const u8) ?[]const u8 {

@@ -1,5 +1,6 @@
 const arch = @import("../arch/interface.zig");
 const format = @import("../lib/interface.zig").format;
+const drivers = @import("../drivers/interface.zig");
 const fs = @import("../fs/interface.zig");
 const object = @import("../object/interface.zig");
 const syscall_dispatch = @import("syscall.zig");
@@ -143,6 +144,17 @@ pub fn main() noreturn {
         } else {
             console.write("USER FAIL\n");
             arch.qemuExit(0x23); // 71
+        }
+        arch.halt();
+    }
+
+    if (config.blk_smoke) {
+        if (arch.initMemorySubsystems() and arch.initAcpi() and drivers.probe()) {
+            console.write("BLK OK\n");
+            arch.qemuExit(0x24); // 73
+        } else {
+            console.write("BLK FAIL\n");
+            arch.qemuExit(0x25); // 75
         }
         arch.halt();
     }

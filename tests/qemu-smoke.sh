@@ -18,6 +18,7 @@ SMP_KERNEL="$ROOT/zig-out/bin/kernel-smp.elf"
 SCHED_KERNEL="$ROOT/zig-out/bin/kernel-sched.elf"
 OBJECT_KERNEL="$ROOT/zig-out/bin/kernel-object.elf"
 USER_KERNEL="$ROOT/zig-out/bin/kernel-user.elf"
+BLK_KERNEL="$ROOT/zig-out/bin/kernel-blk.elf"
 ACCEL="${QEMU_ACCEL:-tcg}"
 
 check_kernel() {
@@ -38,9 +39,14 @@ check_kernel "$SMP_KERNEL" kernel-smp
 check_kernel "$SCHED_KERNEL" kernel-sched
 check_kernel "$OBJECT_KERNEL" kernel-object
 check_kernel "$USER_KERNEL" kernel-user
+check_kernel "$BLK_KERNEL" kernel-blk
 
 # shellcheck source=tests/qemu-env.sh
 source "$ROOT/tests/qemu-env.sh"
+
+BLK_IMAGE="$ROOT/zig-out/blk.img"
+cp "$ROOT/zig-out/initramfs.img" "$BLK_IMAGE"
+truncate -s 4096 "$BLK_IMAGE"
 
 stage_esp
 
@@ -50,6 +56,7 @@ run_boot() {
     local marker="$3"
     local label="$4"
     local smp="${5:-1}"
+    local extra="${6:-}"
     local log="$ROOT/zig-out/serial-$label.log"
     if [[ "$smp" != "1" ]]; then
         log="$ROOT/zig-out/serial-$label-smp$smp.log"
@@ -71,7 +78,7 @@ run_boot() {
         -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
         -serial "file:$(to_qemu_path "$log")" \
         -display none -monitor none -no-reboot \
-        -boot order=c
+        -boot order=c         ${extra}
     code=$?
     set -e
 
@@ -100,6 +107,7 @@ for smp in 1 4; do
     run_boot "$SCHED_KERNEL" 61 "SCHED OK" sched "$smp"
     run_boot "$OBJECT_KERNEL" 65 "OBJECT OK" object "$smp"
     run_boot "$USER_KERNEL" 69 "USER OK" user "$smp"
+    run_boot "$BLK_KERNEL" 73 "BLK OK" blk "$smp" "-drive file=$(to_qemu_path "$BLK_IMAGE"),if=virtio,format=raw"
 done
 
 PANIC_LOG="$ROOT/zig-out/serial-panic.log"
@@ -186,3 +194,10 @@ if ! grep -a -q "USER: ring3 ok" "$USER_LOG" ||
     exit 1
 fi
 echo "qemu-smoke: user ring3 and preemption OK"
+
+if ! grep -a -q "BLK: pci 1af4:" "$ROOT/zig-out/serial-blk-smp4.log"; then
+    echo "qemu-smoke: blk serial output missing the PCI discovery evidence" >&2
+    tail -n 120 "$ROOT/zig-out/serial-blk-smp4.log" 2>/dev/null || true
+    exit 1
+fi
+echo "qemu-smoke: virtio-blk discovery OK"
