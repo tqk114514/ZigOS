@@ -123,7 +123,23 @@ pub fn load() void {
         : .{ .memory = true });
 }
 
+fn directionFlagSet() bool {
+    const flags = asm volatile ("pushfq\n\tpopq %[out]"
+        : [out] "=r" (-> u64),
+    );
+    return (flags & (1 << 10)) != 0;
+}
+
+fn abortEntry() noreturn {
+    serial.console.write("\nKERNEL: direction flag set at entry\n");
+    while (true) {
+        // SAFETY: fatal invariant; stop this CPU with interrupts disabled.
+        asm volatile ("cli\n\thlt");
+    }
+}
+
 export fn irqHandler(vector: u64) callconv(.c) void {
+    if (directionFlagSet()) abortEntry();
     if (vector < idt_entries) {
         if (vector_handlers[@intCast(vector)]) |handler| {
             handler();
@@ -143,10 +159,12 @@ export fn irqPreemptCheck() callconv(.c) void {
 }
 
 export fn pageFaultHandler(frame: *const ExceptionFrame) callconv(.c) bool {
+    if (directionFlagSet()) abortEntry();
     return paging.handlePageFault(frame.error_code);
 }
 
 export fn exceptionHandler(frame: *const ExceptionFrame) callconv(.c) noreturn {
+    if (directionFlagSet()) abortEntry();
     const console = serial.console;
     // SAFETY: reading the current stack pointer in the exception handler.
     const current_rsp = asm volatile ("mov %%rsp, %[out]"

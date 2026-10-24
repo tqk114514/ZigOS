@@ -6,6 +6,8 @@ pf_stub:
     jmp pf_common
 
 pf_common:
+    # A user fault may arrive with DF set; the kernel ABI requires DF=0.
+    cld
     testb $3, 24(%rsp)
     jz 1f
     swapgs

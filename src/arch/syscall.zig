@@ -37,6 +37,13 @@ pub const Frame = extern struct {
     user_rsp: u64,
 };
 
+// syscall.S hard-codes the frame layout and the 12 pushes that build it.
+comptime {
+    if (@offsetOf(Frame, "number") != 40) @compileError("syscall.S expects number at 40");
+    if (@offsetOf(Frame, "rflags") != 56) @compileError("syscall.S expects rflags at 56");
+    if (@offsetOf(Frame, "user_rsp") != 88) @compileError("syscall.S expects user_rsp at 88");
+}
+
 extern fn syscallEntry() callconv(.c) void;
 extern fn enterUser(rip: u64, user_rsp: u64, resume_slot: *usize) callconv(.c) u64;
 extern fn leaveUserKernel(resume_slot: usize, status: u64) callconv(.c) noreturn;

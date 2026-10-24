@@ -47,6 +47,9 @@ irq_tlb:
     jmp irq_common
 
 irq_common:
+    # Userspace may run with DF set; hardware entry does not clear it, and the
+    # kernel ABI requires DF=0. iret restores the user's flags.
+    cld
     # Interrupts from ring3 carry an empty GS base; swap to the per-CPU block.
     testb $3, 24(%rsp)
     jz 1f

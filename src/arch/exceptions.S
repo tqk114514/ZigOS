@@ -49,6 +49,8 @@ ISR_ERR 30
 ISR_NOERR 31
 
 isr_common:
+    # A user exception may arrive with DF set; the kernel ABI requires DF=0.
+    cld
     testb $3, 24(%rsp)
     jz 1f
     swapgs
